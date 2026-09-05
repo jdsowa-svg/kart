@@ -26,7 +26,7 @@ npm run preview   # optional local preview of dist/
 | Action          | Keys    |
 |-----------------|---------|
 | Accelerate      | Up / W  |
-| Brake / reverse | Down / S|
+| Brake (no reverse) | Down / S|
 | Steer left      | Left / A|
 | Steer right     | Right / D|
 | Hop / powerslide hold | Q / E (press = hop; **hold** = SMK L/R shoulder) |
@@ -35,11 +35,15 @@ npm run preview   # optional local preview of dist/
 
 Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet).
 
+**SMK-style:** there is **no reverse**. Brake only slows toward a stop; hop and turn to face the other way.
+
 ### Hold-shoulder powerslide (SMK L/R)
 
 In Super Mario Kart, **holding** L or R is what matters for handling — the hop on press does not change grip. Turning causes lateral slip; high speed exaggerates it; **holding L/R greatly exaggerates slip** (air or ground). Manual: L/R + steer = power slide / tight turn.
 
 Here **Q/E** mirror that: press hops; **hold Q or E + turn** enters powerslide (much lower grip than auto high-speed drift alone). Hop-on-press still gives a short sharper yaw bite with steer.
+
+While skidding/powersliding, coasting friction does **not** scrub speed (accel still works; brake still slows on purpose).
 
 Sources: TASVideos SMK physics (tasvideos.org/GameResources/SNES/SuperMarioKart), official manual.
 

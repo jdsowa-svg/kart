@@ -2,8 +2,9 @@
  * Kart physics: accelerate / brake / steer with speed-dependent turn rate,
  * friction, soft off-road, SNES-style hop, hold-shoulder powerslide, and mini-turbo.
  *
- * Hold Q/E (SMK L/R) exaggerates slip; mini-turbo charges like SMK boost-counter
- * (tasvideos.org/GameResources/SNES/SuperMarioKart).
+ * SMK-style: no reverse (brake → 0 only); skidding/powerslide does not scrub
+ * coast speed (TASVideos). Hold Q/E (SMK L/R) exaggerates slip; mini-turbo
+ * charges like SMK boost-counter (tasvideos.org/GameResources/SNES/SuperMarioKart).
  */
 
 import type { InputState } from './input';
@@ -250,50 +251,8 @@ export function updateKart(
   const onRoad = isOnRoad(surf);
   const maxSpd = onRoad || airborne ? MAX_SPEED : OFFROAD_MAX;
 
-  // Accelerate / brake (allowed in air)
-  if (input.accel) {
-    kart.speed += ACCEL * dt;
-  }
-  if (input.brake) {
-    kart.speed -= BRAKE * dt;
-  }
-
-  // Friction (milder while airborne)
-  const friction = airborne
-    ? FRICTION_AIR
-    : onRoad
-      ? FRICTION_ROAD
-      : FRICTION_OFF;
-  if (!input.accel && !input.brake) {
-    if (kart.speed > 0) {
-      kart.speed = Math.max(0, kart.speed - friction * dt);
-    } else if (kart.speed < 0) {
-      kart.speed = Math.min(0, kart.speed + friction * dt);
-    }
-  }
-
-
-  // Mini-turbo: temporary speed ceiling bump + decay
-  if (kart.turboTimer > 0) {
-    kart.turboTimer = Math.max(0, kart.turboTimer - dt);
-    const turboMul = onRoad ? 1 : TURBO_OFFROAD_MUL;
-    const boost =
-      TURBO_BOOST * turboMul * (kart.turboTimer / TURBO_DURATION);
-    const turboCap = maxSpd + boost;
-    if (kart.speed > 0 && kart.speed < turboCap && input.accel) {
-      kart.speed = Math.min(turboCap, kart.speed + boost * 2.5 * dt);
-    }
-  }
-
-  // Clamp
-  const hardMax =
-    kart.turboTimer > 0
-      ? maxSpd + TURBO_BOOST * (onRoad ? 1 : TURBO_OFFROAD_MUL)
-      : maxSpd;
-  if (kart.speed > hardMax) kart.speed = hardMax;
-  if (kart.speed < -maxSpd * 0.4) kart.speed = -maxSpd * 0.4;
-
-  // Steer input
+  // Steer / skid flags early (wantDrift gates coast friction — TASVideos: skid
+  // does not scrub speed or accel). Hop+steer boost updated here too.
   const steer =
     (input.left ? -1 : 0) + (input.right ? 1 : 0);
   const steering = steer !== 0;
@@ -313,8 +272,59 @@ export function updateKart(
   // Powerslide: hold shoulder + steer (SMK L/R hold) — main slip exaggerator
   const powerslide = input.hopHold && steering;
 
+  // Accelerate / brake (allowed in air). Brake only toward 0 — SMK has no reverse.
+  if (input.accel) {
+    kart.speed += ACCEL * dt;
+  }
+  if (input.brake) {
+    kart.speed = Math.max(0, kart.speed - BRAKE * dt);
+  }
+
+  // Mild auto-drift only at high speed without hold (ground)
+  const absSpeed = Math.abs(kart.speed);
+  const autoDrift =
+    !powerslide && absSpeed > DRIFT_SPEED && steering && !airborne;
+  const wantDrift = powerslide || autoDrift || hopSteerActive;
+
+  // Friction (milder while airborne). Skip while skidding/powersliding so
+  // coast friction does not scrub speed; brake still slows intentionally above.
+  // Off-road max-speed clamp below still applies when not skidding.
+  const friction = airborne
+    ? FRICTION_AIR
+    : onRoad
+      ? FRICTION_ROAD
+      : FRICTION_OFF;
+  if (!input.accel && !input.brake && !wantDrift) {
+    if (kart.speed > 0) {
+      kart.speed = Math.max(0, kart.speed - friction * dt);
+    }
+  }
+
+  // Mini-turbo: temporary speed ceiling bump + decay
+  if (kart.turboTimer > 0) {
+    kart.turboTimer = Math.max(0, kart.turboTimer - dt);
+    const turboMul = onRoad ? 1 : TURBO_OFFROAD_MUL;
+    const boost =
+      TURBO_BOOST * turboMul * (kart.turboTimer / TURBO_DURATION);
+    const turboCap = maxSpd + boost;
+    if (kart.speed > 0 && kart.speed < turboCap && input.accel) {
+      kart.speed = Math.min(turboCap, kart.speed + boost * 2.5 * dt);
+    }
+  }
+
+  // Clamp — no reverse (SMK: hop to turn around)
+  const hardMax =
+    kart.turboTimer > 0
+      ? maxSpd + TURBO_BOOST * (onRoad ? 1 : TURBO_OFFROAD_MUL)
+      : maxSpd;
+  if (kart.speed > hardMax) kart.speed = hardMax;
+  if (kart.speed < 0) kart.speed = 0;
+
+  // Refresh after clamp for steer/grip (wantDrift already decided for friction)
+  const absSpeedClamped = Math.abs(kart.speed);
+
   // Steer rate: hop+steer sharpens yaw; else mild air reduce
-  const speedRatio = Math.min(1, Math.abs(kart.speed) / MAX_SPEED);
+  const speedRatio = Math.min(1, absSpeedClamped / MAX_SPEED);
   let turnRate =
     TURN_BASE * (1 - speedRatio * (1 - TURN_HIGH_FACTOR));
   if (hopSteerActive) {
@@ -335,11 +345,6 @@ export function updateKart(
   if (input.right) kart.angle += turnRate * steerScale * dt;
 
   // --- Drift / powerslide grip ---
-  const absSpeed = Math.abs(kart.speed);
-  // Mild auto-drift only at high speed without hold (ground)
-  const autoDrift =
-    !powerslide && absSpeed > DRIFT_SPEED && steering && !airborne;
-  const wantDrift = powerslide || autoDrift || hopSteerActive;
 
   let grip = GRIP_HIGH;
   if (powerslide) {
@@ -349,14 +354,14 @@ export function updateKart(
     grip = (onRoad ? GRIP_AUTO_DRIFT : GRIP_AUTO_DRIFT_OFF) * HOP_DRIFT_GRIP_MUL;
   } else if (autoDrift) {
     grip = onRoad ? GRIP_AUTO_DRIFT : GRIP_AUTO_DRIFT_OFF;
-  } else if (absSpeed <= DRIFT_SPEED) {
+  } else if (absSpeedClamped <= DRIFT_SPEED) {
     grip = GRIP_HIGH;
   } else {
     grip = GRIP_HIGH * 0.85;
   }
 
   const snapSpeed = powerslide || hopSteerActive ? 10 : 20;
-  if (absSpeed < snapSpeed) {
+  if (absSpeedClamped < snapSpeed) {
     kart.velAngle = kart.angle;
   } else {
     const t = 1 - Math.exp(-grip * dt);
