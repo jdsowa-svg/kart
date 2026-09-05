@@ -1,15 +1,4 @@
 {
-  "far": {
-    "image": "far/sky.png",
-    "width": 1536,
-    "height": 64,
-    "scrollFactor": 0.15
-  },
-  "near": {
-    "image": "near/hills.png",
-    "width": 2560,
-    "height": 64,
-    "scrollFactor": 0.4
-  },
-  "notes": "Drop PNGs into far/ and near/. Suggested sizes: far 1536×64, near 2560×64 (2× SMK-ish for 640×400). Heights may be taller; renderer aligns to horizon."
+  "far": { "image": "far/far-bg.png", "width": 1405, "height": 64, "scrollFactor": 0.15 },
+  "near": { "image": "near/near-bg.png", "width": 2560, "height": 64, "scrollFactor": 0.4, "chromaKey": "#000000" }
 }

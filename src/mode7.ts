@@ -153,8 +153,11 @@ function drawParallaxSky(
     destH: number,
   ): void => {
     const img = layer.image;
-    const w = img.naturalWidth;
-    const h = img.naturalHeight;
+    // HTMLImageElement uses natural*; baked chroma canvases use width/height.
+    const w =
+      img instanceof HTMLImageElement ? img.naturalWidth : Number(img.width);
+    const h =
+      img instanceof HTMLImageElement ? img.naturalHeight : Number(img.height);
     if (w <= 0 || h <= 0) return;
     const drawH = Math.min(destH, HORIZON);
     const y = HORIZON - drawH;
