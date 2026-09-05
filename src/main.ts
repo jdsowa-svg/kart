@@ -4,7 +4,13 @@
 
 import { initInput, getInput, consumeActions } from './input';
 import { createTrack } from './track';
-import { createKart, resetKart, updateKart, drawKartSprite } from './kart';
+import {
+  createKart,
+  resetKart,
+  updateKart,
+  drawKartSprite,
+  tryStartHop,
+} from './kart';
 import {
   VIEW_W,
   VIEW_H,
@@ -64,6 +70,9 @@ function frame(now: number): void {
   if (actions.restart) {
     resetKart(kart, track);
   }
+  if (actions.hop) {
+    tryStartHop(kart);
+  }
 
   const input = getInput();
   while (acc >= STEP) {
@@ -77,7 +86,7 @@ function frame(now: number): void {
   renderMode7(ctx, track, kart, buffers);
 
   const steer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
-  drawKartSprite(ctx, VIEW_W, VIEW_H, steer);
+  drawKartSprite(ctx, VIEW_W, VIEW_H, steer, kart.hopZ);
 
   drawHud(ctx, kart, fps);
 

@@ -10,6 +10,8 @@ export interface InputState {
 export interface InputActions {
   toggleScale: boolean;
   restart: boolean;
+  /** One-shot hop (Q or E), like SMK L/R shoulders. */
+  hop: boolean;
 }
 
 const state: InputState = {
@@ -22,6 +24,7 @@ const state: InputState = {
 const actions: InputActions = {
   toggleScale: false,
   restart: false,
+  hop: false,
 };
 
 function setKey(code: string, down: boolean): void {
@@ -50,7 +53,9 @@ export function initInput(): void {
     if (
       e.code === 'Digit0' ||
       e.code === 'Numpad0' ||
-      e.code === 'Escape'
+      e.code === 'Escape' ||
+      e.code === 'KeyQ' ||
+      e.code === 'KeyE'
     ) {
       e.preventDefault();
       if (e.repeat) return;
@@ -58,6 +63,8 @@ export function initInput(): void {
         actions.toggleScale = true;
       } else if (e.code === 'Escape') {
         actions.restart = true;
+      } else if (e.code === 'KeyQ' || e.code === 'KeyE') {
+        actions.hop = true;
       }
       return;
     }
@@ -90,8 +97,10 @@ export function consumeActions(): InputActions {
   const result = {
     toggleScale: actions.toggleScale,
     restart: actions.restart,
+    hop: actions.hop,
   };
   actions.toggleScale = false;
   actions.restart = false;
+  actions.hop = false;
   return result;
 }

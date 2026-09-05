@@ -1,6 +1,6 @@
 /**
  * Kart physics: accelerate / brake / steer with speed-dependent turn rate,
- * friction, and soft off-road / wall response.
+ * friction, soft off-road / wall response, and SNES-style hop.
  */
 
 import type { InputState } from './input';
@@ -21,6 +21,10 @@ export interface Kart {
   crossedFinish: boolean;
   /** Previous side of finish line for segment crossing. */
   prevSide: number;
+  /** Vertical hop height (world units); 0 = on ground. */
+  hopZ: number;
+  /** Vertical hop velocity (world units / second). */
+  hopVz: number;
 }
 
 const MAX_SPEED = 220;
@@ -28,10 +32,19 @@ const ACCEL = 140;
 const BRAKE = 220;
 const FRICTION_ROAD = 28;
 const FRICTION_OFF = 90;
+const FRICTION_AIR = 20;
 const TURN_BASE = 2.6; // rad/s at low speed
 const TURN_HIGH_FACTOR = 0.35; // turn rate scale at max speed
+const TURN_AIR_FACTOR = 0.7; // reduced turn while airborne
 const WALL_BOUNCE = 0.45;
 const OFFROAD_MAX = 95;
+
+/** Initial upward velocity for a hop (world units / s). */
+export const JUMP_VZ = 250;
+/** Gravity pulling hopZ down (world units / s²). */
+export const HOP_GRAVITY = 1050;
+/** World units of hopZ → screen pixels of sprite lift. */
+const HOP_PX_PER_UNIT = 0.55;
 
 export function createKart(track: TrackData): Kart {
   return {
@@ -42,6 +55,8 @@ export function createKart(track: TrackData): Kart {
     lap: 0,
     crossedFinish: true, // start already "past" line so first cross counts as lap 1
     prevSide: 1,
+    hopZ: 0,
+    hopVz: 0,
   };
 }
 
@@ -54,6 +69,24 @@ export function resetKart(kart: Kart, track: TrackData): void {
   kart.lap = 0;
   kart.crossedFinish = true;
   kart.prevSide = 1;
+  kart.hopZ = 0;
+  kart.hopVz = 0;
+}
+
+/** True while the kart is in the air. */
+export function isAirborne(kart: Kart): boolean {
+  return kart.hopZ > 0 || kart.hopVz > 0;
+}
+
+/**
+ * Start a short SMK-style hop if currently on the ground.
+ * Edge-triggered from input; ignored while already airborne.
+ */
+export function tryStartHop(kart: Kart): void {
+  if (kart.hopZ > 0 || kart.hopVz !== 0) return;
+  kart.hopVz = JUMP_VZ;
+  // Tiny lift so airborne checks trip immediately this frame
+  kart.hopZ = 0.01;
 }
 
 function finishSide(track: TrackData, x: number, y: number): number {
@@ -79,11 +112,12 @@ export function updateKart(
   input: Readonly<InputState>,
   dt: number,
 ): void {
+  const airborne = isAirborne(kart);
   const surf = sampleSurface(track, kart.x, kart.y);
   const onRoad = isOnRoad(surf);
-  const maxSpd = onRoad ? MAX_SPEED : OFFROAD_MAX;
+  const maxSpd = onRoad || airborne ? MAX_SPEED : OFFROAD_MAX;
 
-  // Accelerate / brake
+  // Accelerate / brake (allowed in air)
   if (input.accel) {
     kart.speed += ACCEL * dt;
   }
@@ -91,8 +125,12 @@ export function updateKart(
     kart.speed -= BRAKE * dt;
   }
 
-  // Friction
-  const friction = onRoad ? FRICTION_ROAD : FRICTION_OFF;
+  // Friction (milder while airborne)
+  const friction = airborne
+    ? FRICTION_AIR
+    : onRoad
+      ? FRICTION_ROAD
+      : FRICTION_OFF;
   if (!input.accel && !input.brake) {
     if (kart.speed > 0) {
       kart.speed = Math.max(0, kart.speed - friction * dt);
@@ -105,10 +143,11 @@ export function updateKart(
   if (kart.speed > maxSpd) kart.speed = maxSpd;
   if (kart.speed < -maxSpd * 0.4) kart.speed = -maxSpd * 0.4;
 
-  // Steer: softer at high speed
+  // Steer: softer at high speed; reduced turn rate in air
   const speedRatio = Math.min(1, Math.abs(kart.speed) / MAX_SPEED);
-  const turnRate =
+  let turnRate =
     TURN_BASE * (1 - speedRatio * (1 - TURN_HIGH_FACTOR));
+  if (airborne) turnRate *= TURN_AIR_FACTOR;
   // Need some speed to turn meaningfully (arcade feel)
   const steerScale = Math.min(1, Math.abs(kart.speed) / 25 + 0.15);
   if (input.left) kart.angle -= turnRate * steerScale * dt;
@@ -118,16 +157,32 @@ export function updateKart(
   const nx = kart.x + Math.cos(kart.angle) * kart.speed * dt;
   const ny = kart.y + Math.sin(kart.angle) * kart.speed * dt;
 
-  const nextSurf = sampleSurface(track, nx, ny);
-  if (nextSurf === SURFACE_WALL) {
-    // Soft collision: slide / bounce
-    kart.speed *= -WALL_BOUNCE;
-    // Nudge back slightly
-    kart.x -= Math.cos(kart.angle) * 4;
-    kart.y -= Math.sin(kart.angle) * 4;
-  } else {
+  if (airborne) {
+    // Skip wall collision while hopping — can clear thin wall contact
     kart.x = nx;
     kart.y = ny;
+  } else {
+    const nextSurf = sampleSurface(track, nx, ny);
+    if (nextSurf === SURFACE_WALL) {
+      // Soft collision: slide / bounce
+      kart.speed *= -WALL_BOUNCE;
+      // Nudge back slightly
+      kart.x -= Math.cos(kart.angle) * 4;
+      kart.y -= Math.sin(kart.angle) * 4;
+    } else {
+      kart.x = nx;
+      kart.y = ny;
+    }
+  }
+
+  // Hop vertical integration
+  if (airborne) {
+    kart.hopVz -= HOP_GRAVITY * dt;
+    kart.hopZ += kart.hopVz * dt;
+    if (kart.hopZ <= 0) {
+      kart.hopZ = 0;
+      kart.hopVz = 0;
+    }
   }
 
   // Lap detection via finish-line side change while near the stripe
@@ -146,27 +201,40 @@ export function updateKart(
   kart.prevSide = side;
 }
 
-/** Draw a simple placeholder kart sprite at bottom-center of the view. */
+/**
+ * Draw a simple placeholder kart sprite at bottom-center of the view.
+ * @param hopHeight world-space hopZ; lifts body and fades/shrinks shadow.
+ */
 export function drawKartSprite(
   ctx: CanvasRenderingContext2D,
   canvasW: number,
   canvasH: number,
   steer: number,
+  hopHeight = 0,
 ): void {
   const cx = canvasW * 0.5;
   const cy = canvasH * 0.82;
   const lean = steer * 6;
+  const liftPx = Math.min(28, hopHeight * HOP_PX_PER_UNIT);
+  // Shadow shrink/fade with height (max hop ~40 → strong effect)
+  const hopNorm = Math.min(1, hopHeight / 40);
+  const shadowAlpha = 0.35 * (1 - hopNorm * 0.55);
+  const shadowRx = 22 * (1 - hopNorm * 0.35);
+  const shadowRy = 6 * (1 - hopNorm * 0.35);
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
   ctx.translate(cx + lean, cy);
   ctx.rotate(steer * 0.12);
 
-  // Shadow
-  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  // Shadow stays near ground (no lift)
+  ctx.fillStyle = `rgba(0,0,0,${shadowAlpha.toFixed(3)})`;
   ctx.beginPath();
-  ctx.ellipse(0, 14, 22, 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, 14, shadowRx, shadowRy, 0, 0, Math.PI * 2);
   ctx.fill();
+
+  // Body lifts with hop
+  ctx.translate(0, -liftPx);
 
   // Body
   ctx.fillStyle = '#e03a3a';

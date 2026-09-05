@@ -29,10 +29,11 @@ npm run preview   # optional local preview of dist/
 | Brake / reverse | Down / S|
 | Steer left      | Left / A|
 | Steer right     | Right / D|
+| Hop             | Q / E (same hop; edge-triggered like SMK L/R) |
 | Toggle scale 1×/2× | `0` (Digit0 / Numpad0) |
 | Restart race    | Esc     |
 
-Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark walls bounce you softly.
+Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark walls bounce you softly. Hop to clear thin wall contact while airborne (wall collision skipped in air; turn rate slightly reduced).
 
 ## Architecture
 
@@ -41,8 +42,8 @@ Drive the oval. Crossing the checkered start/finish line increments the lap coun
 | `src/main.ts`   | Boot, fixed-timestep loop, composition |
 | `src/mode7.ts`  | Scanline affine Mode-7 road + sky |
 | `src/track.ts`  | Procedural oval bitmap + surface codes |
-| `src/kart.ts`   | Physics, lap detection, placeholder sprite |
-| `src/input.ts`  | Keyboard state (arrows + WASD) |
+| `src/kart.ts`   | Physics, hop, lap detection, placeholder sprite |
+| `src/input.ts`  | Keyboard state (arrows + WASD + Q/E hop) |
 | `src/hud.ts`    | Speed, lap, FPS overlay |
 | `src/style.css` | Dark page chrome, centered canvas |
 

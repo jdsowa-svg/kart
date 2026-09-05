@@ -15,7 +15,7 @@ export function drawHud(
 
   ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
   ctx.fillRect(8, 8, 200, 56);
-  ctx.fillRect(VIEW_W - 160, 8, 152, 40);
+  ctx.fillRect(VIEW_W - 160, 8, 152, 56);
 
   ctx.font = '14px ui-monospace, monospace';
   ctx.fillStyle = '#f0f0f5';
@@ -28,6 +28,7 @@ export function drawHud(
   ctx.fillStyle = '#a0a8b8';
   ctx.fillText(`FPS ${fps.toFixed(0)}`, VIEW_W - 148, 14);
   ctx.fillText('WASD / ARROWS', VIEW_W - 148, 32);
+  ctx.fillText('Q/E HOP', VIEW_W - 148, 48);
 
   const barX = 16;
   const barY = 52;
