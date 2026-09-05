@@ -1,16 +1,18 @@
-/** Keyboard input state for kart controls (Arrow keys + WASD). */
+/** Keyboard input state for kart controls (Arrow keys + WASD + Q/E hop/hold). */
 
 export interface InputState {
   accel: boolean;
   brake: boolean;
   left: boolean;
   right: boolean;
+  /** True while KeyQ or KeyE is held (SMK L/R shoulder hold). */
+  hopHold: boolean;
 }
 
 export interface InputActions {
   toggleScale: boolean;
   restart: boolean;
-  /** One-shot hop (Q or E), like SMK L/R shoulders. */
+  /** One-shot hop on Q/E keydown edge (like SMK L/R press). */
   hop: boolean;
 }
 
@@ -19,6 +21,7 @@ const state: InputState = {
   brake: false,
   left: false,
   right: false,
+  hopHold: false,
 };
 
 const actions: InputActions = {
@@ -26,6 +29,14 @@ const actions: InputActions = {
   restart: false,
   hop: false,
 };
+
+/** Track Q and E separately so releasing one while the other is held keeps hopHold. */
+let qDown = false;
+let eDown = false;
+
+function syncHopHold(): void {
+  state.hopHold = qDown || eDown;
+}
 
 function setKey(code: string, down: boolean): void {
   switch (code) {
@@ -58,13 +69,19 @@ export function initInput(): void {
       e.code === 'KeyE'
     ) {
       e.preventDefault();
+      if (e.code === 'KeyQ' || e.code === 'KeyE') {
+        if (e.code === 'KeyQ') qDown = true;
+        else eDown = true;
+        syncHopHold();
+        if (e.repeat) return;
+        actions.hop = true;
+        return;
+      }
       if (e.repeat) return;
       if (e.code === 'Digit0' || e.code === 'Numpad0') {
         actions.toggleScale = true;
       } else if (e.code === 'Escape') {
         actions.restart = true;
-      } else if (e.code === 'KeyQ' || e.code === 'KeyE') {
-        actions.hop = true;
       }
       return;
     }
@@ -84,6 +101,16 @@ export function initInput(): void {
     }
   });
   window.addEventListener('keyup', (e) => {
+    if (e.code === 'KeyQ') {
+      qDown = false;
+      syncHopHold();
+      return;
+    }
+    if (e.code === 'KeyE') {
+      eDown = false;
+      syncHopHold();
+      return;
+    }
     setKey(e.code, false);
   });
 }

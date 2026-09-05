@@ -29,17 +29,25 @@ npm run preview   # optional local preview of dist/
 | Brake / reverse | Down / S|
 | Steer left      | Left / A|
 | Steer right     | Right / D|
-| Hop             | Q / E (same hop; edge-triggered like SMK L/R) |
+| Hop / powerslide hold | Q / E (press = hop; **hold** = SMK L/R shoulder) |
 | Toggle scale 1×/2× | `0` (Digit0 / Numpad0) |
 | Restart race    | Esc     |
 
-Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet). Hop lifts the sprite; hopping while steering (Q/E + left/right) sharpens turn radius / powerslide bite (SMK-style), with a short landing slide window.
+Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet).
 
-### Auto-drift & mini-turbo
+### Hold-shoulder powerslide (SMK L/R)
 
-At high speed (above ~`DRIFT_SPEED` ≈ 125 world units/s), holding left/right engages **drift**: movement heading lags behind facing so the kart slides wide through turns (SMK-style plow). The sprite leans harder and shows light dust puffs. HUD shows `DRIFT` while slipping.
+In Super Mario Kart, **holding** L or R is what matters for handling — the hop on press does not change grip. Turning causes lateral slip; high speed exaggerates it; **holding L/R greatly exaggerates slip** (air or ground). Manual: L/R + steer = power slide / tight turn.
 
-Keep the turn held to charge a **mini-turbo**. Release steer (or counter-steer) once charged (`DRIFT READY`) for a short speed burst. Off-road: more slip and a weaker turbo. Hop+steer engages a sharper yaw and forced drift (even slightly under drift speed), then a brief landing powerslide window while you keep the turn.
+Here **Q/E** mirror that: press hops; **hold Q or E + turn** enters powerslide (much lower grip than auto high-speed drift alone). Hop-on-press still gives a short sharper yaw bite with steer.
+
+Sources: TASVideos SMK physics (tasvideos.org/GameResources/SNES/SuperMarioKart), official manual.
+
+### Mini-turbo (SMK boost-counter)
+
+Charge while **hold Q/E + steer + accelerate**. Releasing hold, steer, or accel **resets** the counter (swapping left/right is OK). After ~1.2 s / 128 frames of charge, releasing arms a pending boost; it fires when you **straighten** (no steer, low slip). If that straighten is in mid-air, the boost fires on landing. HUD: SLIDE / READY / MT ARMED / TURBO!.
+
+Milder auto-drift still happens at high speed without holding Q/E.
 
 ## Architecture
 
@@ -48,9 +56,9 @@ Keep the turn held to charge a **mini-turbo**. Release steer (or counter-steer) 
 | `src/main.ts`   | Boot, fixed-timestep loop, composition |
 | `src/mode7.ts`  | Scanline affine Mode-7 road + sky |
 | `src/track.ts`  | Procedural oval bitmap + surface codes |
-| `src/kart.ts`   | Physics, hop, drift/mini-turbo, lap detection, placeholder sprite |
-| `src/input.ts`  | Keyboard state (arrows + WASD + Q/E hop) |
-| `src/hud.ts`    | Speed, lap, drift/turbo, FPS overlay |
+| `src/kart.ts`   | Physics, hop, powerslide/mini-turbo, lap detection, placeholder sprite |
+| `src/input.ts`  | Keyboard state (arrows + WASD + Q/E hop edge + hopHold) |
+| `src/hud.ts`    | Speed, lap, slide/turbo, FPS overlay |
 | `src/style.css` | Dark page chrome, centered canvas |
 
 ### Mode-7 approach

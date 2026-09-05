@@ -1,8 +1,9 @@
 /**
- * On-screen HUD: speed, laps, drift / turbo hints, simple controls hint.
+ * On-screen HUD: speed, laps, powerslide / turbo hints, simple controls hint.
  */
 
 import type { Kart } from "./kart";
+import { miniTurboChargeNorm, miniTurboReady } from "./kart";
 import { VIEW_W } from "./mode7";
 
 export function drawHud(
@@ -15,7 +16,7 @@ export function drawHud(
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
   ctx.fillRect(8, 8, 200, 72);
-  ctx.fillRect(VIEW_W - 160, 8, 152, 56);
+  ctx.fillRect(VIEW_W - 168, 8, 160, 72);
 
   ctx.font = "14px ui-monospace, monospace";
   ctx.fillStyle = "#f0f0f5";
@@ -28,21 +29,24 @@ export function drawHud(
   if (kart.turboTimer > 0) {
     ctx.fillStyle = "#ffd040";
     ctx.fillText("TURBO!", 16, 52);
-  } else if (kart.drift > 0.25) {
+  } else if (kart.pendingTurbo || kart.pendingTurboOnLand) {
+    ctx.fillStyle = "#ffd040";
+    ctx.fillText("MT ARMED", 16, 52);
+  } else if (kart.drift > 0.25 || kart.driftCharge > 0) {
     ctx.fillStyle = "#70d0ff";
-    const charge =
-      kart.driftCharge >= 0.55
-        ? " READY"
-        : kart.driftCharge > 0.15
-          ? " ..."
-          : "";
-    ctx.fillText(`DRIFT${charge}`, 16, 52);
+    const charge = miniTurboReady(kart)
+      ? " READY"
+      : kart.driftCharge > 20
+        ? " ..."
+        : "";
+    ctx.fillText(`SLIDE${charge}`, 16, 52);
   }
 
   ctx.fillStyle = "#a0a8b8";
-  ctx.fillText(`FPS ${fps.toFixed(0)}`, VIEW_W - 148, 14);
-  ctx.fillText("WASD / ARROWS", VIEW_W - 148, 32);
-  ctx.fillText("Q/E HOP", VIEW_W - 148, 48);
+  ctx.fillText(`FPS ${fps.toFixed(0)}`, VIEW_W - 156, 14);
+  ctx.fillText("WASD / ARROWS", VIEW_W - 156, 32);
+  ctx.fillText("HOLD Q/E+TURN", VIEW_W - 156, 48);
+  ctx.fillText("RELEASE=MT", VIEW_W - 156, 64);
 
   const barX = 16;
   const barY = 68;
@@ -58,17 +62,17 @@ export function drawHud(
         : "#40c070";
   ctx.fillRect(barX, barY, barW * fill, 6);
 
-  if (kart.driftCharge > 0.05 && kart.turboTimer <= 0) {
+  const chargeNorm = miniTurboChargeNorm(kart);
+  if (
+    (chargeNorm > 0.02 || kart.pendingTurbo) &&
+    kart.turboTimer <= 0
+  ) {
+    const show = kart.pendingTurbo ? 1 : chargeNorm;
     ctx.fillStyle = "#1a2830";
     ctx.fillRect(barX, barY - 4, barW, 3);
     ctx.fillStyle =
-      kart.driftCharge >= 0.55 ? "#70d0ff" : "#4080a0";
-    ctx.fillRect(
-      barX,
-      barY - 4,
-      barW * Math.min(1, kart.driftCharge),
-      3,
-    );
+      show >= 1 || miniTurboReady(kart) ? "#70d0ff" : "#4080a0";
+    ctx.fillRect(barX, barY - 4, barW * Math.min(1, show), 3);
   }
 
   ctx.restore();
