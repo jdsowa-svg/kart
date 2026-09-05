@@ -66,11 +66,16 @@ export interface Kart {
   /** Sign of spin yaw (+1 / −1), set on spin entry from slip direction. */
   spinDir: number;
   /**
-   * Locked powerslide direction while hopHold (−1 left / +1 right / 0 none).
-   * Set on first steer into the turn; kept for the whole shoulder hold so
-   * counter-steer does not end or flip the drift.
+   * Locked powerslide lean (−1 left / +1 right / 0 none).
+   * Set once on a fresh slide; persists across brief hopHold gaps / re-hops
+   * so opposite steer is counter-steer (does not flip lean).
    */
   driftDir: number;
+  /**
+   * Seconds since hopHold went false while driftDir is locked.
+   * Brief re-hop shoulder swaps must not clear lean immediately.
+   */
+  driftHoldOff: number;
 }
 
 const MAX_SPEED = 220;
@@ -87,6 +92,14 @@ const TURN_AIR_FACTOR = 0.85;
 const TURN_HOP_STEER = 1.8;
 /** Seconds of elevated turn after hop lands while still steering. */
 const LAND_SLIDE_TIME = 0.35;
+/**
+ * hopHold can flicker this long (re-hop L↔R swap) without clearing driftDir.
+ */
+const DRIFT_DIR_HOLD_GRACE = 0.16;
+/** Visual drift below this + low slip → slide considered over for driftDir clear. */
+const DRIFT_DIR_CLEAR_DRIFT = 0.18;
+/** Slip (rad) below this (with low drift) allows driftDir clear after shoulder release. */
+const DRIFT_DIR_CLEAR_SLIP = 0.2;
 const OFFROAD_MAX = 95;
 /** Turn-rate scale when on grass/off-road (ground) — halves tight off-road steer. */
 const OFFROAD_TURN_MUL = 0.5;
@@ -223,6 +236,7 @@ export function createKart(track: TrackData): Kart {
     spinTimer: 0,
     spinDir: 1,
     driftDir: 0,
+    driftHoldOff: 0,
   };
 }
 
@@ -249,6 +263,7 @@ export function resetKart(kart: Kart, track: TrackData): void {
   kart.spinTimer = 0;
   kart.spinDir = 1;
   kart.driftDir = 0;
+  kart.driftHoldOff = 0;
 }
 
 /** True while the kart is in the air. */
@@ -308,6 +323,7 @@ function beginSpinOut(kart: Kart, slipSigned: number): void {
   kart.hopSteerBoost = 0;
   kart.drift = 1;
   kart.driftDir = 0;
+  kart.driftHoldOff = 0;
 }
 
 /**
@@ -423,16 +439,22 @@ export function updateKart(
   }
   const hopSteerActive = kart.hopSteerBoost > 0 && steering;
 
-  // Drift lock: while hopHold, lock driftDir on first into-turn steer.
-  // Counter-steer / brief neutral keep the powerslide until shoulder release.
-  if (!input.hopHold) {
-    kart.driftDir = 0;
-  } else if (kart.driftDir === 0 && steering) {
-    kart.driftDir = steer;
+  // Drift lock: set only on a fresh slide (driftDir === 0). Never overwrite
+  // with opposite steer — that is SMK counter-steer / re-hop opposite bumper.
+  // Persist across brief hopHold gaps so L↔R re-hops keep original lean.
+  if (input.hopHold) {
+    kart.driftHoldOff = 0;
+    if (kart.driftDir === 0 && steering) {
+      kart.driftDir = steer;
+    }
+  } else if (kart.driftDir !== 0) {
+    kart.driftHoldOff += dt;
   }
 
-  // Powerslide: hopHold + locked driftDir (not continuous same-way steer)
-  const powerslide = input.hopHold && kart.driftDir !== 0;
+  // Powerslide while lean is locked and shoulder held; stay in slide while
+  // airborne even if hopHold flickers during a re-hop bumper swap.
+  const powerslide =
+    kart.driftDir !== 0 && (input.hopHold || airborne);
 
   // Accelerate / brake (allowed in air). Brake only toward 0 — SMK has no reverse.
   if (input.accel) {
@@ -657,6 +679,21 @@ export function updateKart(
 
   // Hop vertical integration (visual + air control)
   updateHopVertical(kart, dt);
+
+  // Clear driftDir only when the slide is truly over — not on brief re-hop gaps.
+  if (kart.driftDir !== 0 && !input.hopHold) {
+    const nowAir = isAirborne(kart);
+    const shoulderReleased =
+      kart.driftHoldOff >= DRIFT_DIR_HOLD_GRACE || !nowAir;
+    const slipNow = Math.abs(angleDelta(kart.velAngle, kart.angle));
+    const lowSlide =
+      kart.drift < DRIFT_DIR_CLEAR_DRIFT && slipNow < DRIFT_DIR_CLEAR_SLIP;
+    const hopSettled = !nowAir || kart.hopZ < 2;
+    if (shoulderReleased && lowSlide && hopSettled) {
+      kart.driftDir = 0;
+      kart.driftHoldOff = 0;
+    }
+  }
 
   updateLaps(kart, track);
 }

@@ -91,10 +91,11 @@ function frame(now: number): void {
   const spinning = isSpinning(kart);
   const stickSteer =
     (input.left ? -1 : 0) + (input.right ? 1 : 0);
-  // Lean from locked driftDir while powersliding so counter-steer won't flip the lean
+  // Lean from locked driftDir while sliding (incl. hopHold flicker / airborne re-hop)
   const leanSteer = spinning
     ? 0
-    : kart.driftDir !== 0 && (input.hopHold || kart.drift > 0.25)
+    : kart.driftDir !== 0 &&
+        (input.hopHold || kart.drift > 0.2 || kart.hopZ > 0)
       ? kart.driftDir
       : stickSteer;
   drawKartSprite(
