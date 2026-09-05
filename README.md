@@ -35,6 +35,12 @@ npm run preview   # optional local preview of dist/
 
 Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet). Hop lifts the sprite (turn rate slightly reduced in air).
 
+### Auto-drift & mini-turbo
+
+At high speed (above ~`DRIFT_SPEED` ≈ 125 world units/s), holding left/right engages **drift**: movement heading lags behind facing so the kart slides wide through turns (SMK-style plow). The sprite leans harder and shows light dust puffs. HUD shows `DRIFT` while slipping.
+
+Keep the turn held to charge a **mini-turbo**. Release steer (or counter-steer) once charged (`DRIFT READY`) for a short speed burst. Off-road: more slip and a weaker turbo. Hop is independent; hopping while turning adds a bit of extra slip.
+
 ## Architecture
 
 | Module          | Role |
@@ -42,9 +48,9 @@ Drive the oval. Crossing the checkered start/finish line increments the lap coun
 | `src/main.ts`   | Boot, fixed-timestep loop, composition |
 | `src/mode7.ts`  | Scanline affine Mode-7 road + sky |
 | `src/track.ts`  | Procedural oval bitmap + surface codes |
-| `src/kart.ts`   | Physics, hop, lap detection, placeholder sprite |
+| `src/kart.ts`   | Physics, hop, drift/mini-turbo, lap detection, placeholder sprite |
 | `src/input.ts`  | Keyboard state (arrows + WASD + Q/E hop) |
-| `src/hud.ts`    | Speed, lap, FPS overlay |
+| `src/hud.ts`    | Speed, lap, drift/turbo, FPS overlay |
 | `src/style.css` | Dark page chrome, centered canvas |
 
 ### Mode-7 approach

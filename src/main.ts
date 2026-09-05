@@ -86,7 +86,7 @@ function frame(now: number): void {
   renderMode7(ctx, track, kart, buffers);
 
   const steer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
-  drawKartSprite(ctx, VIEW_W, VIEW_H, steer, kart.hopZ);
+  drawKartSprite(ctx, VIEW_W, VIEW_H, steer, kart.hopZ, kart.drift);
 
   drawHud(ctx, kart, fps);
 
