@@ -53,6 +53,14 @@ Charge while **hold Q/E + steer + accelerate**. Releasing hold, steer, or accel 
 
 Milder auto-drift still happens at high speed without holding Q/E.
 
+### Lift off gas / spin-out
+
+Per the SMK manual: if you are losing it in a skid, **let up on the gas**. While powersliding with high slip, releasing accel sharply raises grip (≈2.75×, or ≈3.4× with brake) so velocity heading catches facing and the slide tightens. Holding accel through a hard skid keeps the loose grip.
+
+Overcooking an aggressive **hold-Q/E powerslide** (sustained very high slip while flooring it at speed) fills a lose-control meter; over-charged mini-turbo near READY bumps it sooner. Gentle auto-drift does not spin you out. Lift off in time and the meter decays.
+
+On spin-out: inputs ignored, kart whirls ~2 turns over ~1 s, speed bleeds, mini-turbo clears. HUD flashes **SPIN!**. Esc reset clears spin state.
+
 ## Architecture
 
 | Module          | Role |

@@ -5,6 +5,8 @@
  * SMK-style: no reverse (brake → 0 only); skidding/powerslide does not scrub
  * coast speed (TASVideos). Hold Q/E (SMK L/R) exaggerates slip; mini-turbo
  * charges like SMK boost-counter (tasvideos.org/GameResources/SNES/SuperMarioKart).
+ * Lift off gas (or light brake) to recover grip in a skid; overcooking a
+ * powerslide can spin-out.
  */
 
 import type { InputState } from './input';
@@ -53,6 +55,15 @@ export interface Kart {
   pendingTurboOnLand: boolean;
   /** Was airborne last frame (to detect landing edge). */
   wasAirborne: boolean;
+  /**
+   * Lose-control meter (0…LOSE_CONTROL_NEED). Builds on aggressive
+   * powerslide+accel+high slip; decays when gas lifted or slip drops.
+   */
+  loseControl: number;
+  /** Remaining spin-out time (seconds). >0 = ignore player control. */
+  spinTimer: number;
+  /** Sign of spin yaw (+1 / −1), set on spin entry from slip direction. */
+  spinDir: number;
 }
 
 const MAX_SPEED = 220;
@@ -92,6 +103,15 @@ const DRIFT_BLEND = 6;
 const HOP_DRIFT_GRIP_MUL = 0.85;
 
 /**
+ * Lift off gas while skidding → grip × this (toward GRIP_HIGH).
+ * Brake recovers slightly harder. Flooring it keeps loose GRIP_POWERSLIDE.
+ */
+const RECOVER_GRIP_MUL = 2.75;
+const RECOVER_BRAKE_GRIP_MUL = 3.4;
+/** Min slip (rad) before lift-off recovery kicks in. */
+const RECOVER_SLIP_MIN = 0.2;
+
+/**
  * SMK mini-boost: charge while (L|R) && (left|right) && accel.
  * Threshold ≈ 64 boost-counter units ≈ 42 frames ≈ 0.7 s at 60 Hz
  * (1/frame to 20, then 2/frame). We accumulate in “frame-equivalent” units.
@@ -114,6 +134,33 @@ export const HOP_GRAVITY = 2363;
 /** World units of hopZ → screen pixels of sprite lift. */
 const HOP_PX_PER_UNIT = 0.55;
 
+// --- Spin-out (overcooked powerslide) ---
+/** Meter threshold to enter spin-out. */
+const LOSE_CONTROL_NEED = 1.0;
+/**
+ * Build rate at full severity (powerslide + accel + max slip + speed).
+ * ~0.7–0.9 s of hard hold to spin if never lifting gas.
+ */
+const LOSE_CONTROL_BUILD = 1.25;
+/** Decay / s when slip drops or gas is lifted (recovery window). */
+const LOSE_CONTROL_DECAY = 2.8;
+/** Very high slip (rad) required to build lose-control. */
+const SPIN_SLIP_THRESHOLD = 0.72;
+/** Soft start of slip contribution (below threshold = no build). */
+const SPIN_SLIP_SOFT = 0.45;
+/** Min speed to accumulate spin risk. */
+const SPIN_SPEED_MIN = 110;
+/** Charge ≥ this fraction of need + extreme slip bumps the meter (overcharge). */
+const OVERCHARGE_FRAC = 0.92;
+/** One-shot bump when overcharged at extreme slip (TAS: sooner skid-out). */
+const OVERCHARGE_BUMP = 0.22;
+/** Spin duration (seconds). */
+const SPIN_DURATION = 1.0;
+/** Full rotations during spin. */
+const SPIN_TURNS = 2.0;
+/** Speed bleed during spin (units / s). */
+const SPIN_SPEED_BLEED = 95;
+
 /** HUD: charge fraction 0–1 for the READY bar (need = MINI_CHARGE_NEED). */
 export function miniTurboChargeNorm(kart: Kart): number {
   return Math.min(1, kart.driftCharge / MINI_CHARGE_NEED);
@@ -121,6 +168,17 @@ export function miniTurboChargeNorm(kart: Kart): number {
 
 export function miniTurboReady(kart: Kart): boolean {
   return kart.driftCharge >= MINI_CHARGE_NEED || kart.pendingTurbo;
+}
+
+export function isSpinning(kart: Kart): boolean {
+  return kart.spinTimer > 0;
+}
+
+/** Body rotation (rad) for sprite during spin-out; 0 when not spinning. */
+export function spinVisualRot(kart: Kart): number {
+  if (kart.spinTimer <= 0) return 0;
+  const progress = 1 - kart.spinTimer / SPIN_DURATION;
+  return kart.spinDir * progress * SPIN_TURNS * Math.PI * 2;
 }
 
 function angleDelta(from: number, to: number): number {
@@ -154,6 +212,9 @@ export function createKart(track: TrackData): Kart {
     pendingTurbo: false,
     pendingTurboOnLand: false,
     wasAirborne: false,
+    loseControl: 0,
+    spinTimer: 0,
+    spinDir: 1,
   };
 }
 
@@ -176,6 +237,9 @@ export function resetKart(kart: Kart, track: TrackData): void {
   kart.pendingTurbo = false;
   kart.pendingTurboOnLand = false;
   kart.wasAirborne = false;
+  kart.loseControl = 0;
+  kart.spinTimer = 0;
+  kart.spinDir = 1;
 }
 
 /** True while the kart is in the air. */
@@ -185,9 +249,10 @@ export function isAirborne(kart: Kart): boolean {
 
 /**
  * Start a short SMK-style hop if currently on the ground.
- * Edge-triggered from input; ignored while already airborne.
+ * Edge-triggered from input; ignored while already airborne or spinning.
  */
 export function tryStartHop(kart: Kart): void {
+  if (kart.spinTimer > 0) return;
   if (kart.hopZ > 0 || kart.hopVz !== 0) return;
   kart.hopVz = JUMP_VZ;
   // Tiny lift so airborne checks trip immediately this frame
@@ -219,6 +284,22 @@ function fireMiniTurbo(kart: Kart, onRoad: boolean, maxSpd: number): void {
   kart.speed = Math.min(maxSpd + TURBO_BOOST, kart.speed + kick);
 }
 
+function clearMiniTurboState(kart: Kart): void {
+  kart.driftCharge = 0;
+  kart.pendingTurbo = false;
+  kart.pendingTurboOnLand = false;
+  kart.turboTimer = 0;
+}
+
+function beginSpinOut(kart: Kart, slipSigned: number): void {
+  kart.spinTimer = SPIN_DURATION;
+  kart.spinDir = slipSigned >= 0 ? 1 : -1;
+  kart.loseControl = 0;
+  clearMiniTurboState(kart);
+  kart.hopSteerBoost = 0;
+  kart.drift = 1;
+}
+
 /**
  * SMK boost-counter step for `dt` seconds at 60 Hz feel:
  * +1/frame while charge < 20, +2/frame thereafter.
@@ -239,12 +320,75 @@ function accumulateMiniCharge(charge: number, dt: number): number {
   return c;
 }
 
+function updateLaps(kart: Kart, track: TrackData): void {
+  const side = finishSide(track, kart.x, kart.y);
+  if (
+    nearFinish(track, kart.x, kart.y) &&
+    kart.prevSide !== side &&
+    kart.speed > 10
+  ) {
+    if (kart.prevSide > 0 && side <= 0) {
+      kart.lap += 1;
+    }
+  }
+  kart.prevSide = side;
+}
+
+function updateHopVertical(kart: Kart, dt: number): void {
+  if (isAirborne(kart)) {
+    kart.hopVz -= HOP_GRAVITY * dt;
+    kart.hopZ += kart.hopVz * dt;
+    if (kart.hopZ <= 0) {
+      kart.hopZ = 0;
+      kart.hopVz = 0;
+    }
+  }
+  kart.wasAirborne = isAirborne(kart);
+}
+
+/** Spin-out: no player control; whirl facing; bleed speed. */
+function updateSpinOut(
+  kart: Kart,
+  track: TrackData,
+  dt: number,
+): void {
+  kart.spinTimer = Math.max(0, kart.spinTimer - dt);
+  clearMiniTurboState(kart);
+
+  const spinRate = (SPIN_TURNS * Math.PI * 2) / SPIN_DURATION;
+  kart.angle += kart.spinDir * spinRate * dt;
+  kart.velAngle = kart.angle;
+
+  kart.speed = Math.max(0, kart.speed - SPIN_SPEED_BLEED * dt);
+  kart.drift = 1;
+  kart.loseControl = 0;
+  kart.hopSteerBoost = 0;
+
+  kart.x += Math.cos(kart.velAngle) * kart.speed * dt;
+  kart.y += Math.sin(kart.velAngle) * kart.speed * dt;
+
+  updateHopVertical(kart, dt);
+
+  // Exit: face along velocity (already synced), low speed restored control
+  if (kart.spinTimer <= 0) {
+    kart.velAngle = kart.angle;
+    kart.drift = 0;
+  }
+
+  updateLaps(kart, track);
+}
+
 export function updateKart(
   kart: Kart,
   track: TrackData,
   input: Readonly<InputState>,
   dt: number,
 ): void {
+  if (kart.spinTimer > 0) {
+    updateSpinOut(kart, track, dt);
+    return;
+  }
+
   const airborne = isAirborne(kart);
   const landed = kart.wasAirborne && !airborne;
   const surf = sampleSurface(track, kart.x, kart.y);
@@ -323,6 +467,10 @@ export function updateKart(
   // Refresh after clamp for steer/grip (wantDrift already decided for friction)
   const absSpeedClamped = Math.abs(kart.speed);
 
+  // Pre-grip slip (for recovery + spin meter)
+  const slipSigned = angleDelta(kart.velAngle, kart.angle);
+  const slip = Math.abs(slipSigned);
+
   // Steer rate: hop+steer sharpens yaw; else mild air reduce
   const speedRatio = Math.min(1, absSpeedClamped / MAX_SPEED);
   let turnRate =
@@ -360,6 +508,17 @@ export function updateKart(
     grip = GRIP_HIGH * 0.85;
   }
 
+  // Lift off gas to recover (SMK manual): while skidding, no accel → grip ↑
+  // Flooring through a hard skid keeps the loose grip. Light brake helps more.
+  if (
+    wantDrift &&
+    slip >= RECOVER_SLIP_MIN &&
+    !input.accel
+  ) {
+    const mul = input.brake ? RECOVER_BRAKE_GRIP_MUL : RECOVER_GRIP_MUL;
+    grip = Math.min(GRIP_HIGH, grip * mul);
+  }
+
   const snapSpeed = powerslide || hopSteerActive ? 10 : 20;
   if (absSpeedClamped < snapSpeed) {
     kart.velAngle = kart.angle;
@@ -368,14 +527,53 @@ export function updateKart(
     kart.velAngle = lerpAngle(kart.velAngle, kart.angle, t);
   }
 
-  // Visual drift factor from slip angle
-  const slip = Math.abs(angleDelta(kart.velAngle, kart.angle));
-  const slipNorm = Math.min(1, slip / 0.55);
+  // Visual drift factor from post-grip slip
+  const slipAfter = Math.abs(angleDelta(kart.velAngle, kart.angle));
+  const slipNorm = Math.min(1, slipAfter / 0.55);
   const targetDrift = wantDrift
     ? Math.max(powerslide ? 0.45 : 0.3, slipNorm)
     : slipNorm * 0.5;
   kart.drift += (targetDrift - kart.drift) * Math.min(1, DRIFT_BLEND * dt);
   if (kart.drift < 0.02 && targetDrift < 0.02) kart.drift = 0;
+
+  // --- Lose-control / spin-out meter (aggressive powerslides only) ---
+  // Gentle auto-drift does not build; need powerslide + accel + speed + high slip.
+  const aggressiveSlide =
+    powerslide &&
+    input.accel &&
+    absSpeedClamped >= SPIN_SPEED_MIN &&
+    slip >= SPIN_SLIP_SOFT;
+
+  if (aggressiveSlide) {
+    const slipFactor = Math.min(
+      1,
+      Math.max(0, (slip - SPIN_SLIP_SOFT) / (SPIN_SLIP_THRESHOLD - SPIN_SLIP_SOFT)),
+    );
+    const speedFactor = Math.min(
+      1,
+      (absSpeedClamped - SPIN_SPEED_MIN) / (MAX_SPEED - SPIN_SPEED_MIN),
+    );
+    kart.loseControl +=
+      LOSE_CONTROL_BUILD * slipFactor * (0.45 + 0.55 * speedFactor) * dt;
+
+    // Over-charged MT while slip extreme → sooner skid-out (TAS notes)
+    const overcharged =
+      kart.driftCharge >= MINI_CHARGE_NEED * OVERCHARGE_FRAC ||
+      kart.pendingTurbo;
+    if (overcharged && slip >= SPIN_SLIP_THRESHOLD) {
+      kart.loseControl += OVERCHARGE_BUMP * dt;
+    }
+  } else {
+    // Lift gas / drop slip → meter decays (recovery window)
+    kart.loseControl = Math.max(0, kart.loseControl - LOSE_CONTROL_DECAY * dt);
+  }
+
+  if (kart.loseControl >= LOSE_CONTROL_NEED) {
+    beginSpinOut(kart, slipSigned);
+    // Finish this frame as a spin so control cuts immediately
+    updateSpinOut(kart, track, dt);
+    return;
+  }
 
   // --- SMK mini-turbo charge ---
   // Charge only while hopHold && (left|right) && accel.
@@ -392,7 +590,7 @@ export function updateKart(
   }
 
   // Fire pending boost when straightened (steer==0, low slip), or on land
-  const straightened = !steering && slip < STRAIGHTEN_SLIP;
+  const straightened = !steering && slipAfter < STRAIGHTEN_SLIP;
   if (kart.pendingTurbo) {
     if (straightened) {
       if (airborne) {
@@ -421,35 +619,16 @@ export function updateKart(
   kart.y += Math.sin(kart.velAngle) * kart.speed * dt;
 
   // Hop vertical integration (visual + air control)
-  if (airborne) {
-    kart.hopVz -= HOP_GRAVITY * dt;
-    kart.hopZ += kart.hopVz * dt;
-    if (kart.hopZ <= 0) {
-      kart.hopZ = 0;
-      kart.hopVz = 0;
-    }
-  }
+  updateHopVertical(kart, dt);
 
-  kart.wasAirborne = isAirborne(kart);
-
-  // Lap detection via finish-line side change while near the stripe
-  const side = finishSide(track, kart.x, kart.y);
-  if (
-    nearFinish(track, kart.x, kart.y) &&
-    kart.prevSide !== side &&
-    kart.speed > 10
-  ) {
-    if (kart.prevSide > 0 && side <= 0) {
-      kart.lap += 1;
-    }
-  }
-  kart.prevSide = side;
+  updateLaps(kart, track);
 }
 
 /**
  * Draw a simple placeholder kart sprite at bottom-center of the view.
  * @param hopHeight world-space hopZ; lifts body and fades/shrinks shadow.
  * @param drift 0–1 slip amount for lean / skid marks / dust.
+ * @param spinRot extra radians of body spin (spin-out visual).
  */
 export function drawKartSprite(
   ctx: CanvasRenderingContext2D,
@@ -458,6 +637,7 @@ export function drawKartSprite(
   steer: number,
   hopHeight = 0,
   drift = 0,
+  spinRot = 0,
 ): void {
   const cx = canvasW * 0.5;
   const cy = canvasH * 0.82;
@@ -467,26 +647,31 @@ export function drawKartSprite(
   const shadowAlpha = 0.35 * (1 - hopNorm * 0.55);
   const shadowRx = 22 * (1 - hopNorm * 0.35);
   const shadowRy = 6 * (1 - hopNorm * 0.35);
+  const spinning = Math.abs(spinRot) > 0.001;
 
   ctx.save();
   ctx.imageSmoothingEnabled = false;
-  ctx.translate(cx + lean, cy);
-  ctx.rotate(steer * 0.12 + drift * steer * 0.18);
+  ctx.translate(cx + (spinning ? 0 : lean), cy);
+  ctx.rotate(
+    spinning
+      ? spinRot
+      : steer * 0.12 + drift * steer * 0.18,
+  );
 
   ctx.fillStyle = `rgba(0,0,0,${shadowAlpha.toFixed(3)})`;
   ctx.beginPath();
   ctx.ellipse(0, 14, shadowRx, shadowRy, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  if (drift > 0.2 && hopHeight < 2) {
-    const n = 3;
+  if ((drift > 0.2 || spinning) && hopHeight < 2) {
+    const n = spinning ? 5 : 3;
     for (let i = 0; i < n; i++) {
       const t = (i + 1) / (n + 1);
       const side = steer !== 0 ? -steer : i % 2 === 0 ? -1 : 1;
-      const px = side * (10 + t * 14) + Math.sin(i * 2.1) * 3;
+      const px = side * (10 + t * 14) + Math.sin(i * 2.1 + spinRot) * 3;
       const py = 12 + t * 10;
-      const r = 2 + drift * 4 * (1 - t);
-      const a = 0.15 + drift * 0.35 * (1 - t);
+      const r = 2 + (spinning ? 1 : drift) * 4 * (1 - t);
+      const a = 0.15 + (spinning ? 0.5 : drift) * 0.35 * (1 - t);
       ctx.fillStyle = `rgba(200,190,160,${a.toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(px, py, r, 0, Math.PI * 2);

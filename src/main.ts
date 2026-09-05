@@ -10,6 +10,8 @@ import {
   updateKart,
   drawKartSprite,
   tryStartHop,
+  isSpinning,
+  spinVisualRot,
 } from './kart';
 import {
   VIEW_W,
@@ -85,8 +87,19 @@ function frame(now: number): void {
 
   renderMode7(ctx, track, kart, buffers);
 
-  const steer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
-  drawKartSprite(ctx, VIEW_W, VIEW_H, steer, kart.hopZ, kart.drift);
+  const spinning = isSpinning(kart);
+  const steer = spinning
+    ? 0
+    : (input.left ? -1 : 0) + (input.right ? 1 : 0);
+  drawKartSprite(
+    ctx,
+    VIEW_W,
+    VIEW_H,
+    steer,
+    kart.hopZ,
+    kart.drift,
+    spinVisualRot(kart),
+  );
 
   drawHud(ctx, kart, fps);
 
