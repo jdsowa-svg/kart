@@ -166,11 +166,12 @@ export const HOP_GRAVITY = 2363;
 const HOP_PX_PER_UNIT = 0.55;
 
 // --- Spin-out (overcooked powerslide) ---
-/** Meter threshold to enter spin-out. */
-const LOSE_CONTROL_NEED = 1.0;
+// 2× onset vs prior guess; not SMK-verified.
+/** Meter threshold to enter spin-out (doubled for 2× time to spin-out). */
+const LOSE_CONTROL_NEED = 2.0;
 /**
  * Build rate at full severity (powerslide + accel + max slip + speed).
- * ~0.7–0.9 s of hard hold to spin if never lifting gas.
+ * ~1.4–1.8 s of hard hold to spin if never lifting gas (was ~0.7–0.9 s).
  */
 const LOSE_CONTROL_BUILD = 1.25;
 /** Decay / s when slip drops or gas is lifted (recovery window). */
@@ -183,7 +184,7 @@ const SPIN_SLIP_SOFT = 0.45;
 const SPIN_SPEED_MIN = 110;
 /** Charge ≥ this fraction of need + extreme slip bumps the meter (overcharge). */
 const OVERCHARGE_FRAC = 0.92;
-/** One-shot bump when overcharged at extreme slip (TAS: sooner skid-out). */
+/** Extra build / s when overcharged at extreme slip (left as-is; need 2× already slows it). */
 const OVERCHARGE_BUMP = 0.22;
 /** Spin duration (seconds). */
 const SPIN_DURATION = 1.0;
