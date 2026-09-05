@@ -7,11 +7,21 @@ export interface InputState {
   right: boolean;
 }
 
+export interface InputActions {
+  toggleScale: boolean;
+  restart: boolean;
+}
+
 const state: InputState = {
   accel: false,
   brake: false,
   left: false,
   right: false,
+};
+
+const actions: InputActions = {
+  toggleScale: false,
+  restart: false,
 };
 
 function setKey(code: string, down: boolean): void {
@@ -37,6 +47,21 @@ function setKey(code: string, down: boolean): void {
 
 export function initInput(): void {
   window.addEventListener('keydown', (e) => {
+    if (
+      e.code === 'Digit0' ||
+      e.code === 'Numpad0' ||
+      e.code === 'Escape'
+    ) {
+      e.preventDefault();
+      if (e.repeat) return;
+      if (e.code === 'Digit0' || e.code === 'Numpad0') {
+        actions.toggleScale = true;
+      } else if (e.code === 'Escape') {
+        actions.restart = true;
+      }
+      return;
+    }
+
     setKey(e.code, true);
     if (
       e.code === 'ArrowUp' ||
@@ -58,4 +83,15 @@ export function initInput(): void {
 
 export function getInput(): Readonly<InputState> {
   return state;
+}
+
+/** Return pending one-shot actions and clear them for the next frame. */
+export function consumeActions(): InputActions {
+  const result = {
+    toggleScale: actions.toggleScale,
+    restart: actions.restart,
+  };
+  actions.toggleScale = false;
+  actions.restart = false;
+  return result;
 }

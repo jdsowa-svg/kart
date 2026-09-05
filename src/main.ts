@@ -2,9 +2,9 @@
  * Entry: wire modules, run fixed-timestep game loop.
  */
 
-import { initInput, getInput } from './input';
+import { initInput, getInput, consumeActions } from './input';
 import { createTrack } from './track';
-import { createKart, updateKart, drawKartSprite } from './kart';
+import { createKart, resetKart, updateKart, drawKartSprite } from './kart';
 import {
   VIEW_W,
   VIEW_H,
@@ -19,6 +19,16 @@ ctx.imageSmoothingEnabled = false;
 
 canvas.width = VIEW_W;
 canvas.height = VIEW_H;
+
+/** Display scale: 1 = 640×400 CSS, 2 = 1280×800 CSS. Default 2×. */
+let displayScale = 2;
+
+function applyDisplayScale(): void {
+  canvas.style.width = `${VIEW_W * displayScale}px`;
+  canvas.style.height = `${VIEW_H * displayScale}px`;
+}
+
+applyDisplayScale();
 
 initInput();
 
@@ -44,6 +54,15 @@ function frame(now: number): void {
     fps = fpsFrames / fpsAccum;
     fpsAccum = 0;
     fpsFrames = 0;
+  }
+
+  const actions = consumeActions();
+  if (actions.toggleScale) {
+    displayScale = displayScale === 2 ? 1 : 2;
+    applyDisplayScale();
+  }
+  if (actions.restart) {
+    resetKart(kart, track);
   }
 
   const input = getInput();

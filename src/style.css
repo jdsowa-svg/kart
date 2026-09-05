@@ -33,8 +33,6 @@ body {
 }
 
 #game {
-  width: 640px;
-  height: 400px;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
   background: #000;

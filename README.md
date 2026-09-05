@@ -2,7 +2,7 @@
 
 A Phase-1 playable 2D Mode-7 / pseudo-3D kart racer inspired by Super Mario Kart (SNES). Placeholder art only; modular so textures and sprites can be swapped later.
 
-**Canvas:** fixed **640×400**, pixelated rendering.
+**Canvas:** internal **640×400** (pixelated); display defaults to **2×** (1280×800 CSS), toggle with `0`.
 
 ## How to run
 
@@ -29,6 +29,8 @@ npm run preview   # optional local preview of dist/
 | Brake / reverse | Down / S|
 | Steer left      | Left / A|
 | Steer right     | Right / D|
+| Toggle scale 1×/2× | `0` (Digit0 / Numpad0) |
+| Restart race    | Esc     |
 
 Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark walls bounce you softly.
 

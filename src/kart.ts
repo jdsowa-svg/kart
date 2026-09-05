@@ -45,6 +45,17 @@ export function createKart(track: TrackData): Kart {
   };
 }
 
+/** Reset kart to track start (same fields as createKart). */
+export function resetKart(kart: Kart, track: TrackData): void {
+  kart.x = track.startX;
+  kart.y = track.startY;
+  kart.angle = track.startAngle;
+  kart.speed = 0;
+  kart.lap = 0;
+  kart.crossedFinish = true;
+  kart.prevSide = 1;
+}
+
 function finishSide(track: TrackData, x: number, y: number): number {
   // Cross product of finish segment AB with AP → which side of the line
   const abx = track.finishBx - track.finishAx;
