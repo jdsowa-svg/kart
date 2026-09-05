@@ -92,9 +92,33 @@ export function createMode7Buffers(): Mode7Buffers {
   };
 }
 
+function angleDelta(from: number, to: number): number {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+function lerpAngle(from: number, to: number, t: number): number {
+  return from + angleDelta(from, to) * Math.min(1, Math.max(0, t));
+}
+
+/**
+ * Camera heading weight toward velAngle (path) vs kart.angle (nose).
+ * →1 while powersliding / exit taper / high drift so counter-steer does not
+ * swing the Mode-7 view opposite the sprite lean (SMK-like).
+ */
+function cameraSlideWeight(kart: Kart): number {
+  if (kart.powerslideBlend > 0) return kart.powerslideBlend;
+  if (kart.driftDir !== 0) return Math.min(1, 0.55 + kart.drift * 0.45);
+  if (kart.drift > 0.25) return Math.min(1, (kart.drift - 0.25) / 0.5);
+  return 0;
+}
+
 /**
  * Render sky + Mode-7 road into the destination canvas context.
- * Camera sits behind the kart looking along kart.angle.
+ * Camera sits behind the kart looking along path heading while sliding,
+ * otherwise along kart.angle.
  */
 export function renderMode7(
   ctx: CanvasRenderingContext2D,
@@ -106,10 +130,17 @@ export function renderMode7(
   const mapSize = track.size;
   const out = buffers.road.data;
 
-  const camX = kart.x - Math.cos(kart.angle) * CAM_DISTANCE;
-  const camY = kart.y - Math.sin(kart.angle) * CAM_DISTANCE;
-  const cosA = Math.cos(kart.angle);
-  const sinA = Math.sin(kart.angle);
+  // Follow drift path (velAngle) during slide/counter-steer; nose when gripping
+  const slideW = cameraSlideWeight(kart);
+  const camAngle =
+    slideW > 0
+      ? lerpAngle(kart.angle, kart.velAngle, slideW)
+      : kart.angle;
+
+  const camX = kart.x - Math.cos(camAngle) * CAM_DISTANCE;
+  const camY = kart.y - Math.sin(camAngle) * CAM_DISTANCE;
+  const cosA = Math.cos(camAngle);
+  const sinA = Math.sin(camAngle);
   const latX = -sinA;
   const latY = cosA;
 

@@ -568,10 +568,11 @@ export function updateKart(
       // Same-way: normal into-turn powerslide yaw
       kart.angle += steer * turnRate * steerScale * dt;
     } else if (steer === -kart.driftDir) {
-      // Counter-steer: weak opposite yaw + pull facing toward vel (tighten slide)
-      const COUNTER_YAW = 0.22;
+      // Counter-steer: very weak opposite yaw + pull facing toward vel (tighten)
+      // Keep nose from whipping opposite lean; Mode-7 cam mostly follows velAngle
+      const COUNTER_YAW = 0.12;
       kart.angle += steer * turnRate * steerScale * COUNTER_YAW * dt;
-      const stabilize = 1 - Math.exp(-5.2 * dt);
+      const stabilize = 1 - Math.exp(-6.5 * dt);
       kart.angle = lerpAngle(kart.angle, kart.velAngle, stabilize);
     } else {
       // Neutral while holding shoulder: gentle slip decay, still in slide
