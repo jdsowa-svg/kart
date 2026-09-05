@@ -2,7 +2,7 @@
 
 A Phase-1 playable 2D Mode-7 / pseudo-3D kart racer inspired by Super Mario Kart (SNES). Placeholder art only; modular so textures and sprites can be swapped later.
 
-**Canvas:** internal **640×400** (pixelated); display defaults to **2×** (1280×800 CSS), toggle with `0`.
+**Canvas:** internal **640×400** (pixelated); display defaults to **2×** (1280×800 CSS), toggle with `0`. Mode-7 renders at half-res for perf.
 
 ## How to run
 
