@@ -6,6 +6,7 @@
  * scrub vs going straight (TASVideos) — releasing gas still coasts down.
  * Hold Q/E (SMK L/R) exaggerates slip; counter-steer reins it in; mini-turbo
  * charges like SMK boost-counter (tasvideos.org/GameResources/SNES/SuperMarioKart).
+ * Releasing L/R soft-exits via a short powerslideBlend taper (residual slip).
  * Lift off gas (or light brake) to recover grip in a skid; overcooking a
  * powerslide can spin-out.
  */
@@ -76,6 +77,11 @@ export interface Kart {
    * Brief re-hop shoulder swaps must not clear lean immediately.
    */
   driftHoldOff: number;
+  /**
+   * Powerslide exit blend 1→0 over EXIT_TAPER after shoulder release.
+   * Softens grip / lean snap so residual slip recovers like SMK.
+   */
+  powerslideBlend: number;
 }
 
 const MAX_SPEED = 220;
@@ -100,6 +106,11 @@ const DRIFT_DIR_HOLD_GRACE = 0.16;
 const DRIFT_DIR_CLEAR_DRIFT = 0.18;
 /** Slip (rad) below this (with low drift) allows driftDir clear after shoulder release. */
 const DRIFT_DIR_CLEAR_SLIP = 0.2;
+/**
+ * Soft powerslide exit: after releasing L/R, grip/lean taper over this many seconds
+ * (SMK residual slip + grip recovery — not a hard break to full grip).
+ */
+const EXIT_TAPER = 0.3;
 const OFFROAD_MAX = 95;
 /** Turn-rate scale when on grass/off-road (ground) — halves tight off-road steer. */
 const OFFROAD_TURN_MUL = 0.5;
@@ -237,6 +248,7 @@ export function createKart(track: TrackData): Kart {
     spinDir: 1,
     driftDir: 0,
     driftHoldOff: 0,
+    powerslideBlend: 0,
   };
 }
 
@@ -264,6 +276,7 @@ export function resetKart(kart: Kart, track: TrackData): void {
   kart.spinDir = 1;
   kart.driftDir = 0;
   kart.driftHoldOff = 0;
+  kart.powerslideBlend = 0;
 }
 
 /** True while the kart is in the air. */
@@ -324,6 +337,7 @@ function beginSpinOut(kart: Kart, slipSigned: number): void {
   kart.drift = 1;
   kart.driftDir = 0;
   kart.driftHoldOff = 0;
+  kart.powerslideBlend = 0;
 }
 
 /**
@@ -456,6 +470,18 @@ export function updateKart(
   const powerslide =
     kart.driftDir !== 0 && (input.hopHold || airborne);
 
+  // Soft exit taper: while powersliding keep blend at 1; on shoulder release
+  // (ground) decay 1→0 over EXIT_TAPER so grip/lean ease out. Re-pressing
+  // hopHold mid-taper snaps blend back to 1 with the same driftDir.
+  if (powerslide) {
+    kart.powerslideBlend = 1;
+  } else if (kart.powerslideBlend > 0) {
+    kart.powerslideBlend = Math.max(
+      0,
+      kart.powerslideBlend - dt / EXIT_TAPER,
+    );
+  }
+
   // Accelerate / brake (allowed in air). Brake only toward 0 — SMK has no reverse.
   if (input.accel) {
     kart.speed += ACCEL * dt;
@@ -467,8 +493,14 @@ export function updateKart(
   // Mild auto-drift only at high speed without hold (ground)
   const absSpeed = Math.abs(kart.speed);
   const autoDrift =
-    !powerslide && absSpeed > DRIFT_SPEED && steering && !airborne;
-  const wantDrift = powerslide || autoDrift || hopSteerActive;
+    !powerslide &&
+    kart.powerslideBlend <= 0 &&
+    absSpeed > DRIFT_SPEED &&
+    steering &&
+    !airborne;
+  const exitingSlide = kart.powerslideBlend > 0 && !powerslide;
+  const wantDrift =
+    powerslide || exitingSlide || autoDrift || hopSteerActive;
 
   // Friction (milder while airborne). Always apply normal coast friction when
   // not accel/braking — skidding does not add *extra* scrub vs straight, but
@@ -557,6 +589,12 @@ export function updateKart(
   if (powerslide) {
     grip = onRoad ? GRIP_POWERSLIDE : GRIP_POWERSLIDE_OFF;
     if (hopSteerActive) grip *= HOP_DRIFT_GRIP_MUL;
+  } else if (exitingSlide) {
+    // Blend powerslide grip → normal over EXIT_TAPER (no hard snap)
+    const ps = onRoad ? GRIP_POWERSLIDE : GRIP_POWERSLIDE_OFF;
+    const blend = kart.powerslideBlend;
+    grip = ps + (GRIP_HIGH - ps) * (1 - blend);
+    if (hopSteerActive) grip *= HOP_DRIFT_GRIP_MUL;
   } else if (hopSteerActive) {
     grip = (onRoad ? GRIP_AUTO_DRIFT : GRIP_AUTO_DRIFT_OFF) * HOP_DRIFT_GRIP_MUL;
   } else if (autoDrift) {
@@ -569,8 +607,10 @@ export function updateKart(
 
   // Lift off gas to recover (SMK manual): while skidding, no accel → grip ↑
   // Flooring through a hard skid keeps the loose grip. Light brake helps more.
+  // Skip during exit taper — blend already lerps grip toward GRIP_HIGH.
   if (
     wantDrift &&
+    !exitingSlide &&
     slip >= RECOVER_SLIP_MIN &&
     !input.accel
   ) {
@@ -578,7 +618,7 @@ export function updateKart(
     grip = Math.min(GRIP_HIGH, grip * mul);
   }
 
-  const snapSpeed = powerslide || hopSteerActive ? 10 : 20;
+  const snapSpeed = powerslide || exitingSlide || hopSteerActive ? 10 : 20;
   if (absSpeedClamped < snapSpeed) {
     kart.velAngle = kart.angle;
   } else {
@@ -590,7 +630,14 @@ export function updateKart(
   const slipAfter = Math.abs(angleDelta(kart.velAngle, kart.angle));
   const slipNorm = Math.min(1, slipAfter / 0.55);
   const targetDrift = wantDrift
-    ? Math.max(powerslide ? 0.45 : 0.3, slipNorm)
+    ? Math.max(
+        powerslide
+          ? 0.45
+          : exitingSlide
+            ? 0.45 * kart.powerslideBlend
+            : 0.3,
+        slipNorm,
+      )
     : slipNorm * 0.5;
   kart.drift += (targetDrift - kart.drift) * Math.min(1, DRIFT_BLEND * dt);
   if (kart.drift < 0.02 && targetDrift < 0.02) kart.drift = 0;
@@ -680,7 +727,8 @@ export function updateKart(
   // Hop vertical integration (visual + air control)
   updateHopVertical(kart, dt);
 
-  // Clear driftDir only when the slide is truly over — not on brief re-hop gaps.
+  // Clear driftDir when exit taper finishes or slip is already low —
+  // not on brief re-hop gaps. Keep lean during taper so it eases on the same side.
   if (kart.driftDir !== 0 && !input.hopHold) {
     const nowAir = isAirborne(kart);
     const shoulderReleased =
@@ -688,10 +736,12 @@ export function updateKart(
     const slipNow = Math.abs(angleDelta(kart.velAngle, kart.angle));
     const lowSlide =
       kart.drift < DRIFT_DIR_CLEAR_DRIFT && slipNow < DRIFT_DIR_CLEAR_SLIP;
+    const taperDone = kart.powerslideBlend <= 0;
     const hopSettled = !nowAir || kart.hopZ < 2;
-    if (shoulderReleased && lowSlide && hopSettled) {
+    if (shoulderReleased && hopSettled && (lowSlide || taperDone)) {
       kart.driftDir = 0;
       kart.driftHoldOff = 0;
+      kart.powerslideBlend = 0;
     }
   }
 
