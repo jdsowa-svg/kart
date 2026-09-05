@@ -26,6 +26,11 @@ export function drawHud(
   ctx.fillText(`SPEED  ${speedKmh.toFixed(0).padStart(3, " ")}`, 16, 14);
   ctx.fillText(`LAP    ${kart.lap}`, 16, 34);
 
+  const mtFocus =
+    kart.pendingTurbo ||
+    kart.pendingTurboOnLand ||
+    miniTurboReady(kart);
+
   if (isSpinning(kart)) {
     ctx.fillStyle = "#ff4060";
     ctx.fillText("SPIN!", 16, 52);
@@ -49,7 +54,7 @@ export function drawHud(
   ctx.fillText(`FPS ${fps.toFixed(0)}`, VIEW_W - 156, 14);
   ctx.fillText("WASD / ARROWS", VIEW_W - 156, 32);
   ctx.fillText("HOLD Q/E+TURN", VIEW_W - 156, 48);
-  ctx.fillText("RELEASE=MT", VIEW_W - 156, 64);
+  ctx.fillText("STRAIGHTEN=MT", VIEW_W - 156, 64);
 
   const barX = 16;
   const barY = 68;
@@ -79,18 +84,22 @@ export function drawHud(
     ctx.fillRect(barX, barY - 4, barW * Math.min(1, show), 3);
   }
 
-  // Hint: lift off gas to recover while skidding hard (not during spin)
-  if (
-    !isSpinning(kart) &&
-    kart.drift > 0.4 &&
-    kart.loseControl > 0.15
-  ) {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-    ctx.fillRect(VIEW_W / 2 - 110, VIEW_H - 36, 220, 22);
-    ctx.fillStyle = "#ffe080";
+  // Bottom hint: straighten for MT when armed/ready; else lift-off for spin recovery
+  if (!isSpinning(kart) && kart.turboTimer <= 0) {
     ctx.font = "12px ui-monospace, monospace";
     ctx.textAlign = "center";
-    ctx.fillText("LIFT OFF GAS TO RECOVER", VIEW_W / 2, VIEW_H - 30);
+    if (mtFocus) {
+      ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+      ctx.fillRect(VIEW_W / 2 - 130, VIEW_H - 36, 260, 22);
+      ctx.fillStyle = "#70d0ff";
+      ctx.fillText("STRAIGHTEN FOR MINI-TURBO", VIEW_W / 2, VIEW_H - 30);
+    } else if (kart.loseControl > 0.15 && kart.drift > 0.4) {
+      // Genuine spin-danger without armed MT — lift off gas recovers grip
+      ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+      ctx.fillRect(VIEW_W / 2 - 110, VIEW_H - 36, 220, 22);
+      ctx.fillStyle = "#ffe080";
+      ctx.fillText("LIFT OFF GAS TO RECOVER", VIEW_W / 2, VIEW_H - 30);
+    }
     ctx.textAlign = "left";
   }
 

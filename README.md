@@ -49,13 +49,13 @@ Sources: TASVideos SMK physics (tasvideos.org/GameResources/SNES/SuperMarioKart)
 
 ### Mini-turbo (SMK boost-counter)
 
-Charge while **hold Q/E + steer + accelerate**. Releasing hold, steer, or accel **resets** the counter (swapping left/right is OK). After ~0.7 s / 64 frames of charge, releasing arms a pending boost; it fires when you **straighten** (no steer, low slip). If that straighten is in mid-air, the boost fires on landing. HUD: SLIDE / READY / MT ARMED / TURBO!.
+Charge while **hold Q/E + steer + accelerate**. Releasing hold, steer, or accel **resets** the counter (swapping left/right is OK). After ~0.7 s / 64 frames of charge, releasing arms a pending boost; it fires when you **straighten** (release turn / low slip — not “release gas”). If that straighten is in mid-air, the boost fires on landing. HUD: SLIDE / READY / MT ARMED / TURBO!; hint **STRAIGHTEN FOR MINI-TURBO**.
 
 Milder auto-drift still happens at high speed without holding Q/E.
 
 ### Lift off gas / spin-out
 
-Per the SMK manual: if you are losing it in a skid, **let up on the gas**. While powersliding with high slip, releasing accel sharply raises grip (≈2.75×, or ≈3.4× with brake) so velocity heading catches facing and the slide tightens. Holding accel through a hard skid keeps the loose grip.
+**Lift off gas is for skid recovery only** (not mini-turbo). Per the SMK manual: if you are losing it in a skid, **let up on the gas**. While powersliding with high slip, releasing accel sharply raises grip (≈2.75×, or ≈3.4× with brake) so velocity heading catches facing and the slide tightens. Holding accel through a hard skid keeps the loose grip.
 
 Overcooking an aggressive **hold-Q/E powerslide** (sustained very high slip while flooring it at speed) fills a lose-control meter; over-charged mini-turbo near READY bumps it sooner. Gentle auto-drift does not spin you out. Lift off in time and the meter decays.
 
