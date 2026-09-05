@@ -33,7 +33,7 @@ export interface Kart {
   drift: number;
   /**
    * Mini-turbo charge (0…1+). Builds while hopHold && steer && accel.
-   * Maps to SMK boost-counter (~128 = fully charged / READY).
+   * Maps to SMK boost-counter (~64 = fully charged / READY).
    */
   driftCharge: number;
   /** Remaining mini-turbo boost time (seconds). */
@@ -90,10 +90,11 @@ const HOP_DRIFT_GRIP_MUL = 0.85;
 
 /**
  * SMK mini-boost: charge while (L|R) && (left|right) && accel.
- * Threshold ≈ 128 boost-counter units ≈ 74 frames ≈ 1.23 s at 60 Hz
+ * Threshold ≈ 64 boost-counter units ≈ 42 frames ≈ 0.7 s at 60 Hz
  * (1/frame to 20, then 2/frame). We accumulate in “frame-equivalent” units.
+ * (Was 128 / ~1.2 s; halved for snappier powerslide MT.)
  */
-const MINI_CHARGE_NEED = 128;
+const MINI_CHARGE_NEED = 64;
 /** Peak extra speed from mini-turbo. */
 const TURBO_BOOST = 55;
 /** Mini-turbo duration (seconds). */

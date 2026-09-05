@@ -45,7 +45,7 @@ Sources: TASVideos SMK physics (tasvideos.org/GameResources/SNES/SuperMarioKart)
 
 ### Mini-turbo (SMK boost-counter)
 
-Charge while **hold Q/E + steer + accelerate**. Releasing hold, steer, or accel **resets** the counter (swapping left/right is OK). After ~1.2 s / 128 frames of charge, releasing arms a pending boost; it fires when you **straighten** (no steer, low slip). If that straighten is in mid-air, the boost fires on landing. HUD: SLIDE / READY / MT ARMED / TURBO!.
+Charge while **hold Q/E + steer + accelerate**. Releasing hold, steer, or accel **resets** the counter (swapping left/right is OK). After ~0.7 s / 64 frames of charge, releasing arms a pending boost; it fires when you **straighten** (no steer, low slip). If that straighten is in mid-air, the boost fires on landing. HUD: SLIDE / READY / MT ARMED / TURBO!.
 
 Milder auto-drift still happens at high speed without holding Q/E.
 
