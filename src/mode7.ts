@@ -13,6 +13,12 @@ import {
   SURFACE_GRASS,
   SURFACE_FINISH,
 } from './track';
+import {
+  getActiveTileset,
+  sampleTilesetRGB,
+  type TrackTileset,
+} from './assets/tileset';
+import { getParallaxLayers, type ParallaxLayers } from './assets/backgrounds';
 
 export const VIEW_W = 640;
 export const VIEW_H = 400;
@@ -133,6 +139,40 @@ export function resetMode7Camera(angle?: number): void {
   }
 }
 
+/** Draw far/near strips over procedural sky; scrolls with camera yaw. */
+function drawParallaxSky(
+  ctx: CanvasRenderingContext2D,
+  camAngle: number,
+  layers: ParallaxLayers,
+  fallbackSky: HTMLCanvasElement,
+): void {
+  ctx.drawImage(fallbackSky, 0, 0);
+
+  const drawLayer = (
+    layer: ParallaxLayers['far'],
+    destH: number,
+  ): void => {
+    const img = layer.image;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    if (w <= 0 || h <= 0) return;
+    const drawH = Math.min(destH, HORIZON);
+    const y = HORIZON - drawH;
+    let scroll =
+      ((camAngle / (Math.PI * 2)) * w * layer.scrollFactor) % w;
+    if (scroll < 0) scroll += w;
+    let x = -scroll;
+    while (x < VIEW_W) {
+      ctx.drawImage(img, 0, 0, w, h, x, y, w, drawH);
+      x += w;
+    }
+  };
+
+  // Far behind near; clamp strip height to horizon band
+  drawLayer(layers.far, Math.min(layers.far.height, HORIZON));
+  drawLayer(layers.near, Math.min(layers.near.height, HORIZON));
+}
+
 /**
  * Render sky + Mode-7 road into the destination canvas context.
  * Camera sits behind the kart looking along path heading while sliding,
@@ -148,6 +188,8 @@ export function renderMode7(
   const surface = track.surface;
   const mapSize = track.size;
   const out = buffers.road.data;
+  const tileset: TrackTileset | null = getActiveTileset();
+  const parallax = getParallaxLayers();
 
   // Follow drift path (velAngle) while powersliding / high residual drift;
   // nose when gripping or hopping without an active slide.
@@ -215,21 +257,28 @@ export function renderMode7(
         b = OOB_B;
       } else {
         const surf = surface[(iy << 10) + ix]; // mapSize === 1024
-        // Checker for grass / finish; solid for road / wall
-        const dark =
-          surf === SURFACE_GRASS
-            ? ((ix >> 4) ^ (iy >> 4)) & 1
-            : surf === SURFACE_FINISH
-              ? ((ix >> 3) ^ (iy >> 2)) & 1
-              : 0;
-        if (dark) {
-          r = PAL_DARK_R[surf];
-          g = PAL_DARK_G[surf];
-          b = PAL_DARK_B[surf];
+        if (tileset) {
+          const rgb = sampleTilesetRGB(tileset, surf, ix, iy);
+          r = rgb[0];
+          g = rgb[1];
+          b = rgb[2];
         } else {
-          r = PAL_R[surf];
-          g = PAL_G[surf];
-          b = PAL_B[surf];
+          // Checker for grass / finish; solid for road / wall
+          const dark =
+            surf === SURFACE_GRASS
+              ? ((ix >> 4) ^ (iy >> 4)) & 1
+              : surf === SURFACE_FINISH
+                ? ((ix >> 3) ^ (iy >> 2)) & 1
+                : 0;
+          if (dark) {
+            r = PAL_DARK_R[surf]!;
+            g = PAL_DARK_G[surf]!;
+            b = PAL_DARK_B[surf]!;
+          } else {
+            r = PAL_R[surf]!;
+            g = PAL_G[surf]!;
+            b = PAL_B[surf]!;
+          }
         }
       }
 
@@ -250,8 +299,12 @@ export function renderMode7(
     }
   }
 
-  // Cached sky (gradient + sun + horizon line)
-  ctx.drawImage(buffers.skyCanvas, 0, 0);
+  // Sky: parallax strips when loaded, else procedural gradient
+  if (parallax) {
+    drawParallaxSky(ctx, camAngle, parallax, buffers.skyCanvas);
+  } else {
+    ctx.drawImage(buffers.skyCanvas, 0, 0);
+  }
 
   // Half-res road → nearest-neighbor stretch to full road rect
   const rctx = buffers.roadCtx;

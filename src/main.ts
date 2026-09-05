@@ -21,6 +21,8 @@ import {
   resetMode7Camera,
 } from './mode7';
 import { drawHud } from './hud';
+import { loadTrackTileset } from './assets/tileset';
+import { loadBackgrounds } from './assets/backgrounds';
 
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 const ctx = canvas.getContext('2d', { alpha: false })!;
@@ -119,3 +121,23 @@ function frame(now: number): void {
 }
 
 requestAnimationFrame(frame);
+
+/** Optional art: tileset / parallax. Missing files keep procedural Mode-7 + sky. */
+void (async () => {
+  const [tileset, backgrounds] = await Promise.all([
+    loadTrackTileset(),
+    loadBackgrounds(),
+  ]);
+  if (tileset) {
+    console.info(
+      `[assets] track tileset loaded (${tileset.meta.tileCount} tiles, ${tileset.meta.tileWidth}×${tileset.meta.tileHeight})`,
+    );
+  } else {
+    console.info('[assets] no tileset — procedural track palette');
+  }
+  if (backgrounds) {
+    console.info('[assets] parallax backgrounds loaded');
+  } else {
+    console.info('[assets] no parallax PNGs — procedural sky');
+  }
+})();

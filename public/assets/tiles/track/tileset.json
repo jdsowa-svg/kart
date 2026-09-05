@@ -1,0 +1,15 @@
+{
+  "image": "tileset.png",
+  "tileWidth": 16,
+  "tileHeight": 16,
+  "columns": 8,
+  "tileCount": 32,
+  "padding": 0,
+  "spacing": 0,
+  "surfaces": {
+    "grass": [0, 1],
+    "road": [2, 3, 4],
+    "wall": [5],
+    "finish": [6, 7]
+  }
+}
