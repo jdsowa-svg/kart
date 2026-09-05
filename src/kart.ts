@@ -2,8 +2,9 @@
  * Kart physics: accelerate / brake / steer with speed-dependent turn rate,
  * friction, soft off-road, SNES-style hop, hold-shoulder powerslide, and mini-turbo.
  *
- * SMK-style: no reverse (brake → 0 only); skidding/powerslide does not scrub
- * coast speed (TASVideos). Hold Q/E (SMK L/R) exaggerates slip; mini-turbo
+ * SMK-style: no reverse (brake → 0 only); skidding does not add *extra*
+ * scrub vs going straight (TASVideos) — releasing gas still coasts down.
+ * Hold Q/E (SMK L/R) exaggerates slip; mini-turbo
  * charges like SMK boost-counter (tasvideos.org/GameResources/SNES/SuperMarioKart).
  * Lift off gas (or light brake) to recover grip in a skid; overcooking a
  * powerslide can spin-out.
@@ -395,8 +396,8 @@ export function updateKart(
   const onRoad = isOnRoad(surf);
   const maxSpd = onRoad || airborne ? MAX_SPEED : OFFROAD_MAX;
 
-  // Steer / skid flags early (wantDrift gates coast friction — TASVideos: skid
-  // does not scrub speed or accel). Hop+steer boost updated here too.
+  // Steer / skid flags early (powerslide / autoDrift / hopSteer). Hop+steer
+  // boost updated here too.
   const steer =
     (input.left ? -1 : 0) + (input.right ? 1 : 0);
   const steering = steer !== 0;
@@ -430,15 +431,16 @@ export function updateKart(
     !powerslide && absSpeed > DRIFT_SPEED && steering && !airborne;
   const wantDrift = powerslide || autoDrift || hopSteerActive;
 
-  // Friction (milder while airborne). Skip while skidding/powersliding so
-  // coast friction does not scrub speed; brake still slows intentionally above.
-  // Off-road max-speed clamp below still applies when not skidding.
+  // Friction (milder while airborne). Always apply normal coast friction when
+  // not accel/braking — skidding does not add *extra* scrub vs straight, but
+  // releasing gas still bleeds speed. Same road/off-road/air rates while
+  // powersliding; brake still slows intentionally above.
   const friction = airborne
     ? FRICTION_AIR
     : onRoad
       ? FRICTION_ROAD
       : FRICTION_OFF;
-  if (!input.accel && !input.brake && !wantDrift) {
+  if (!input.accel && !input.brake) {
     if (kart.speed > 0) {
       kart.speed = Math.max(0, kart.speed - friction * dt);
     }
@@ -464,7 +466,7 @@ export function updateKart(
   if (kart.speed > hardMax) kart.speed = hardMax;
   if (kart.speed < 0) kart.speed = 0;
 
-  // Refresh after clamp for steer/grip (wantDrift already decided for friction)
+  // Refresh after clamp for steer/grip
   const absSpeedClamped = Math.abs(kart.speed);
 
   // Pre-grip slip (for recovery + spin meter)

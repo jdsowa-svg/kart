@@ -43,7 +43,7 @@ In Super Mario Kart, **holding** L or R is what matters for handling — the hop
 
 Here **Q/E** mirror that: press hops; **hold Q or E + turn** enters powerslide (much lower grip than auto high-speed drift alone). Hop-on-press still gives a short sharper yaw bite with steer.
 
-While skidding/powersliding, coasting friction does **not** scrub speed (accel still works; brake still slows on purpose).
+Skidding does **not** add *extra* coast scrub versus going straight (same road/off-road/air friction while powersliding). Releasing gas still coasts down normally — there is no infinite no-gas turn exploit. Accel still works; brake still slows on purpose.
 
 Sources: TASVideos SMK physics (tasvideos.org/GameResources/SNES/SuperMarioKart), official manual.
 
