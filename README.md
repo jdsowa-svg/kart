@@ -58,7 +58,7 @@ Drive the oval. Crossing the checkered start/finish line increments the lap coun
 
 In Super Mario Kart, **holding** L or R is what matters for handling — the hop on press does not change grip. Turning causes lateral slip; high speed exaggerates it; **holding L/R greatly exaggerates slip** (air or ground). Manual: L/R + steer = power slide / tight turn.
 
-Here **Q/E** mirror that: press hops; **hold Q or E + turn** enters powerslide (much lower grip than auto high-speed drift alone). Hop-on-press still gives a short sharper yaw bite with steer.
+Here **Q/E** mirror that: press hops; **hold Q or E + turn** enters powerslide (much lower grip than auto high-speed drift alone). Hop-on-press still gives a short sharper yaw bite with steer. **Counter-steer** (opposite turn while holding Q/E) keeps the drift-side lean and reins the slide in without breaking the powerslide — classic SMK hold-R + counter-steer.
 
 Skidding does **not** add *extra* coast scrub versus going straight (same road/off-road/air friction while powersliding). Releasing gas still coasts down normally — there is no infinite no-gas turn exploit. Accel still works; brake still slows on purpose.
 

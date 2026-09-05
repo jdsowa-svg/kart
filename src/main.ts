@@ -89,14 +89,19 @@ function frame(now: number): void {
   renderMode7(ctx, track, kart, buffers);
 
   const spinning = isSpinning(kart);
-  const steer = spinning
+  const stickSteer =
+    (input.left ? -1 : 0) + (input.right ? 1 : 0);
+  // Lean from locked driftDir while powersliding so counter-steer won't flip the lean
+  const leanSteer = spinning
     ? 0
-    : (input.left ? -1 : 0) + (input.right ? 1 : 0);
+    : kart.driftDir !== 0 && (input.hopHold || kart.drift > 0.25)
+      ? kart.driftDir
+      : stickSteer;
   drawKartSprite(
     ctx,
     VIEW_W,
     VIEW_H,
-    steer,
+    leanSteer,
     kart.hopZ,
     kart.drift,
     spinVisualRot(kart),

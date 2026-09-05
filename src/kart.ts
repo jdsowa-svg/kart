@@ -4,7 +4,7 @@
  *
  * SMK-style: no reverse (brake → 0 only); skidding does not add *extra*
  * scrub vs going straight (TASVideos) — releasing gas still coasts down.
- * Hold Q/E (SMK L/R) exaggerates slip; mini-turbo
+ * Hold Q/E (SMK L/R) exaggerates slip; counter-steer reins it in; mini-turbo
  * charges like SMK boost-counter (tasvideos.org/GameResources/SNES/SuperMarioKart).
  * Lift off gas (or light brake) to recover grip in a skid; overcooking a
  * powerslide can spin-out.
@@ -65,6 +65,12 @@ export interface Kart {
   spinTimer: number;
   /** Sign of spin yaw (+1 / −1), set on spin entry from slip direction. */
   spinDir: number;
+  /**
+   * Locked powerslide direction while hopHold (−1 left / +1 right / 0 none).
+   * Set on first steer into the turn; kept for the whole shoulder hold so
+   * counter-steer does not end or flip the drift.
+   */
+  driftDir: number;
 }
 
 const MAX_SPEED = 220;
@@ -216,6 +222,7 @@ export function createKart(track: TrackData): Kart {
     loseControl: 0,
     spinTimer: 0,
     spinDir: 1,
+    driftDir: 0,
   };
 }
 
@@ -241,6 +248,7 @@ export function resetKart(kart: Kart, track: TrackData): void {
   kart.loseControl = 0;
   kart.spinTimer = 0;
   kart.spinDir = 1;
+  kart.driftDir = 0;
 }
 
 /** True while the kart is in the air. */
@@ -299,6 +307,7 @@ function beginSpinOut(kart: Kart, slipSigned: number): void {
   clearMiniTurboState(kart);
   kart.hopSteerBoost = 0;
   kart.drift = 1;
+  kart.driftDir = 0;
 }
 
 /**
@@ -414,8 +423,16 @@ export function updateKart(
   }
   const hopSteerActive = kart.hopSteerBoost > 0 && steering;
 
-  // Powerslide: hold shoulder + steer (SMK L/R hold) — main slip exaggerator
-  const powerslide = input.hopHold && steering;
+  // Drift lock: while hopHold, lock driftDir on first into-turn steer.
+  // Counter-steer / brief neutral keep the powerslide until shoulder release.
+  if (!input.hopHold) {
+    kart.driftDir = 0;
+  } else if (kart.driftDir === 0 && steering) {
+    kart.driftDir = steer;
+  }
+
+  // Powerslide: hopHold + locked driftDir (not continuous same-way steer)
+  const powerslide = input.hopHold && kart.driftDir !== 0;
 
   // Accelerate / brake (allowed in air). Brake only toward 0 — SMK has no reverse.
   if (input.accel) {
@@ -491,8 +508,26 @@ export function updateKart(
     turnRate *= OFFROAD_TURN_MUL;
   }
   const steerScale = Math.min(1, Math.abs(kart.speed) / 25 + 0.15);
-  if (input.left) kart.angle -= turnRate * steerScale * dt;
-  if (input.right) kart.angle += turnRate * steerScale * dt;
+  if (powerslide) {
+    // SMK counter-steer: stay in slide; opposite stick reins slip in, doesn't flip
+    if (steer === kart.driftDir) {
+      // Same-way: normal into-turn powerslide yaw
+      kart.angle += steer * turnRate * steerScale * dt;
+    } else if (steer === -kart.driftDir) {
+      // Counter-steer: weak opposite yaw + pull facing toward vel (tighten slide)
+      const COUNTER_YAW = 0.22;
+      kart.angle += steer * turnRate * steerScale * COUNTER_YAW * dt;
+      const stabilize = 1 - Math.exp(-5.2 * dt);
+      kart.angle = lerpAngle(kart.angle, kart.velAngle, stabilize);
+    } else {
+      // Neutral while holding shoulder: gentle slip decay, still in slide
+      const maintain = 1 - Math.exp(-1.4 * dt);
+      kart.angle = lerpAngle(kart.angle, kart.velAngle, maintain);
+    }
+  } else {
+    if (input.left) kart.angle -= turnRate * steerScale * dt;
+    if (input.right) kart.angle += turnRate * steerScale * dt;
+  }
 
   // --- Drift / powerslide grip ---
 
