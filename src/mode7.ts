@@ -105,14 +105,32 @@ function lerpAngle(from: number, to: number, t: number): number {
 
 /**
  * Camera heading weight toward velAngle (path) vs kart.angle (nose).
- * →1 while powersliding / exit taper / high drift so counter-steer does not
- * swing the Mode-7 view opposite the sprite lean (SMK-like).
+ * Driven by powerslideBlend (active slide + exit taper) so counter-steer
+ * keeps path-follow without snapping on hop lean-lock (driftDir).
+ * Residual only when drift is clearly high — not on airborne hops alone.
  */
 function cameraSlideWeight(kart: Kart): number {
   if (kart.powerslideBlend > 0) return kart.powerslideBlend;
-  if (kart.driftDir !== 0) return Math.min(1, 0.55 + kart.drift * 0.45);
-  if (kart.drift > 0.25) return Math.min(1, (kart.drift - 0.25) / 0.5);
+  if (kart.drift > 0.35) return Math.min(1, (kart.drift - 0.35) / 0.5);
   return 0;
+}
+
+/** Exp-smooth time constant for camera heading (~0.12–0.2s). */
+const CAM_SMOOTH_TAU = 0.15;
+/** Snap smoothed cam when target jumps this far (reset / teleport). */
+const CAM_SNAP_DELTA = Math.PI * 0.75;
+
+let smoothedCamAngle = 0;
+let camAngleInitialized = false;
+
+/** Snap Mode-7 camera heading (call on kart reset). */
+export function resetMode7Camera(angle?: number): void {
+  if (angle !== undefined) {
+    smoothedCamAngle = angle;
+    camAngleInitialized = true;
+  } else {
+    camAngleInitialized = false;
+  }
 }
 
 /**
@@ -125,17 +143,30 @@ export function renderMode7(
   track: TrackData,
   kart: Kart,
   buffers: Mode7Buffers,
+  dt = 1 / 60,
 ): void {
   const surface = track.surface;
   const mapSize = track.size;
   const out = buffers.road.data;
 
-  // Follow drift path (velAngle) during slide/counter-steer; nose when gripping
+  // Follow drift path (velAngle) while powersliding / high residual drift;
+  // nose when gripping or hopping without an active slide.
   const slideW = cameraSlideWeight(kart);
-  const camAngle =
+  const targetAngle =
     slideW > 0
       ? lerpAngle(kart.angle, kart.velAngle, slideW)
       : kart.angle;
+
+  if (!camAngleInitialized) {
+    smoothedCamAngle = targetAngle;
+    camAngleInitialized = true;
+  } else if (Math.abs(angleDelta(smoothedCamAngle, targetAngle)) > CAM_SNAP_DELTA) {
+    smoothedCamAngle = targetAngle;
+  } else {
+    const t = 1 - Math.exp(-Math.max(0, dt) / CAM_SMOOTH_TAU);
+    smoothedCamAngle = lerpAngle(smoothedCamAngle, targetAngle, t);
+  }
+  const camAngle = smoothedCamAngle;
 
   const camX = kart.x - Math.cos(camAngle) * CAM_DISTANCE;
   const camY = kart.y - Math.sin(camAngle) * CAM_DISTANCE;

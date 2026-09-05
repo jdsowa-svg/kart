@@ -18,6 +18,7 @@ import {
   VIEW_H,
   createMode7Buffers,
   renderMode7,
+  resetMode7Camera,
 } from './mode7';
 import { drawHud } from './hud';
 
@@ -72,6 +73,7 @@ function frame(now: number): void {
   }
   if (actions.restart) {
     resetKart(kart, track);
+    resetMode7Camera(kart.angle);
   }
   if (actions.hop) {
     tryStartHop(kart);
@@ -86,7 +88,7 @@ function frame(now: number): void {
   ctx.fillStyle = '#000';
   ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 
-  renderMode7(ctx, track, kart, buffers);
+  renderMode7(ctx, track, kart, buffers, dt);
 
   const spinning = isSpinning(kart);
   const stickSteer =
