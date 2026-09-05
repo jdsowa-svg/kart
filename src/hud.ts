@@ -16,7 +16,7 @@ export function drawHud(
 
   ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
   ctx.fillRect(8, 8, 200, 72);
-  ctx.fillRect(VIEW_W - 168, 8, 160, 72);
+  ctx.fillRect(VIEW_W - 188, 8, 180, 88);
 
   ctx.font = "14px ui-monospace, monospace";
   ctx.fillStyle = "#f0f0f5";
@@ -51,10 +51,12 @@ export function drawHud(
   }
 
   ctx.fillStyle = "#a0a8b8";
-  ctx.fillText(`FPS ${fps.toFixed(0)}`, VIEW_W - 156, 14);
-  ctx.fillText("WASD / ARROWS", VIEW_W - 156, 32);
-  ctx.fillText("HOLD Q/E+TURN", VIEW_W - 156, 48);
-  ctx.fillText("STRAIGHTEN=MT", VIEW_W - 156, 64);
+  ctx.fillText(`FPS ${fps.toFixed(0)}`, VIEW_W - 176, 14);
+  ctx.fillText("WASD / ARROWS", VIEW_W - 176, 30);
+  ctx.fillText("HOLD Q/E+TURN", VIEW_W - 176, 44);
+  ctx.fillText("STRAIGHTEN=MT", VIEW_W - 176, 58);
+  ctx.fillText("PAD: A gas · X brake", VIEW_W - 176, 72);
+  ctx.fillText("LB/RB hop", VIEW_W - 176, 84);
 
   const barX = 16;
   const barY = 68;

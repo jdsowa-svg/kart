@@ -23,6 +23,8 @@ npm run preview   # optional local preview of dist/
 
 ## Controls
 
+### Keyboard
+
 | Action          | Keys    |
 |-----------------|---------|
 | Accelerate      | Up / W  |
@@ -32,6 +34,21 @@ npm run preview   # optional local preview of dist/
 | Hop / powerslide hold | Q / E (press = hop; **hold** = SMK L/R shoulder) |
 | Toggle scale 1×/2× | `0` (Digit0 / Numpad0) |
 | Restart race    | Esc     |
+
+### Xbox / USB gamepad (Browser Gamepad API)
+
+Mapped like **SNES Mario Kart** by face-button *position* (standard mapping, Chrome/Safari Xbox). Keyboard and pad are OR’d — neither clears the other. Some browsers need a button press/focus first.
+
+| SMK | SNES | Xbox | Action |
+|-----|------|------|--------|
+| Accel | B (bottom) | **A** (button 0) **or RT** (7) | accel |
+| Brake | Y (west) | **X** (button 2) **or LT** (6) | brake (no reverse) |
+| Steer | D-pad | D-pad (12–15) + left stick X (deadzone ~0.28) | left/right |
+| Hop / powerslide hold | L / R | **LB / RB** (4 / 5) | hop on press; hopHold while held |
+| Restart (Esc) | — | **Start/Menu** (9) | restart |
+| Scale toggle (`0`) | — | **View/Back** (8) | toggleScale |
+
+**RT = accel** and **LT = brake** are optional convenience aliases, OR’d with A/X (common on Xbox). Unused for now: B/Y face (items / rear view later).
 
 Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet).
 
@@ -69,7 +86,7 @@ On spin-out: inputs ignored, kart whirls ~2 turns over ~1 s, speed bleeds, mini-
 | `src/mode7.ts`  | Scanline affine Mode-7 road + sky |
 | `src/track.ts`  | Procedural oval bitmap + surface codes |
 | `src/kart.ts`   | Physics, hop, powerslide/mini-turbo, lap detection, placeholder sprite |
-| `src/input.ts`  | Keyboard state (arrows + WASD + Q/E hop edge + hopHold) |
+| `src/input.ts`  | Keyboard + Xbox gamepad (SNES-style mapping; OR merge) |
 | `src/hud.ts`    | Speed, lap, slide/turbo, FPS overlay |
 | `src/style.css` | Dark page chrome, centered canvas |
 

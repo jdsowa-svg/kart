@@ -2,7 +2,7 @@
  * Entry: wire modules, run fixed-timestep game loop.
  */
 
-import { initInput, getInput, consumeActions } from './input';
+import { initInput, getInput, consumeActions, pollGamepad } from './input';
 import { createTrack } from './track';
 import {
   createKart,
@@ -64,6 +64,7 @@ function frame(now: number): void {
     fpsFrames = 0;
   }
 
+  pollGamepad();
   const actions = consumeActions();
   if (actions.toggleScale) {
     displayScale = displayScale === 2 ? 1 : 2;
