@@ -105,15 +105,15 @@ export function createTrack(): TrackData {
         }
       }
 
-      // Outer curb / wall
-      if (dOuter >= 0.98 && dOuter <= 1.045) {
+      // Outer curb / wall (thickened to reduce tunneling)
+      if (dOuter >= 0.955 && dOuter <= 1.07) {
         surf = SURFACE_WALL;
         r = wall[0];
         g = wall[1];
         b = wall[2];
       }
-      // Inner curb / wall
-      if (dInner >= 0.955 && dInner <= 1.02 && dOuter < 0.99) {
+      // Inner curb / wall (thickened to reduce tunneling)
+      if (dInner >= 0.93 && dInner <= 1.045 && dOuter < 1.0) {
         surf = SURFACE_WALL;
         r = wall[0];
         g = wall[1];

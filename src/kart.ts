@@ -1,6 +1,6 @@
 /**
  * Kart physics: accelerate / brake / steer with speed-dependent turn rate,
- * friction, soft off-road / wall response, and SNES-style hop.
+ * friction, soft off-road, solid wall collision with substeps, and SNES-style hop.
  */
 
 import type { InputState } from './input';
@@ -36,7 +36,9 @@ const FRICTION_AIR = 20;
 const TURN_BASE = 2.6; // rad/s at low speed
 const TURN_HIGH_FACTOR = 0.35; // turn rate scale at max speed
 const TURN_AIR_FACTOR = 0.7; // reduced turn while airborne
-const WALL_BOUNCE = 0.45;
+const WALL_RESTITUTION = 0.25; // outward bounce fraction of into-wall speed
+const WALL_SUBSTEP_PX = 4;
+const WALL_MAX_SUBSTEPS = 10;
 const OFFROAD_MAX = 95;
 
 /** Initial upward velocity for a hop (world units / s). */
@@ -106,6 +108,178 @@ function nearFinish(track: TrackData, x: number, y: number): boolean {
   return dx * dx + dy * dy < 120 * 120;
 }
 
+
+function isWallAt(track: TrackData, x: number, y: number): boolean {
+  return sampleSurface(track, x, y) === SURFACE_WALL;
+}
+
+/** Estimate outward wall normal by sampling neighbors (points from wall toward free space). */
+function estimateWallNormal(
+  track: TrackData,
+  x: number,
+  y: number,
+): { nx: number; ny: number } {
+  const offsets: [number, number][] = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+    [2, 0],
+    [-2, 0],
+    [0, 2],
+    [0, -2],
+  ];
+  let gx = 0;
+  let gy = 0;
+  for (const [ox, oy] of offsets) {
+    const wall = isWallAt(track, x + ox, y + oy);
+    // Free space pulls the "outward" gradient
+    const w = wall ? -1 : 1;
+    gx += ox * w;
+    gy += oy * w;
+  }
+  const len = Math.hypot(gx, gy);
+  if (len < 1e-6) {
+    // Fallback: push opposite velocity direction handled by caller
+    return { nx: 0, ny: 0 };
+  }
+  return { nx: gx / len, ny: gy / len };
+}
+
+/** Push position out of wall along best free direction. Returns true if still stuck. */
+function depenetrate(
+  track: TrackData,
+  kart: Kart,
+): boolean {
+  if (!isWallAt(track, kart.x, kart.y)) return false;
+
+  // Prefer estimated normal first
+  let { nx, ny } = estimateWallNormal(track, kart.x, kart.y);
+  if (nx === 0 && ny === 0) {
+    // No gradient — search expanding ring
+    const maxR = 24;
+    for (let r = 1; r <= maxR; r++) {
+      let bestX = 0;
+      let bestY = 0;
+      let bestD = Infinity;
+      for (let a = 0; a < 16; a++) {
+        const ang = (a / 16) * Math.PI * 2;
+        const tx = kart.x + Math.cos(ang) * r;
+        const ty = kart.y + Math.sin(ang) * r;
+        if (!isWallAt(track, tx, ty)) {
+          const d = r;
+          if (d < bestD) {
+            bestD = d;
+            bestX = tx;
+            bestY = ty;
+          }
+        }
+      }
+      if (bestD < Infinity) {
+        kart.x = bestX;
+        kart.y = bestY;
+        kart.speed *= 0.35;
+        return false;
+      }
+    }
+    kart.speed = 0;
+    return true;
+  }
+
+  // Walk along normal until free
+  for (let i = 0; i < 32; i++) {
+    kart.x += nx * 1.5;
+    kart.y += ny * 1.5;
+    if (!isWallAt(track, kart.x, kart.y)) {
+      // Extra clearance
+      kart.x += nx * 2;
+      kart.y += ny * 2;
+      kart.speed *= 0.4;
+      return false;
+    }
+  }
+  kart.speed = 0;
+  return true;
+}
+
+/**
+ * Resolve one attempted displacement against walls:
+ * axis-separated slide + bounce velocity along estimated normal.
+ */
+function resolveWallMove(
+  track: TrackData,
+  kart: Kart,
+  dx: number,
+  dy: number,
+): void {
+  const tx = kart.x + dx;
+  const ty = kart.y + dy;
+  if (!isWallAt(track, tx, ty)) {
+    kart.x = tx;
+    kart.y = ty;
+    return;
+  }
+
+  // Axis-separated sliding along free axes
+  let movedX = false;
+  let movedY = false;
+  if (dx !== 0 && !isWallAt(track, kart.x + dx, kart.y)) {
+    kart.x += dx;
+    movedX = true;
+  }
+  if (dy !== 0 && !isWallAt(track, kart.x, kart.y + dy)) {
+    kart.y += dy;
+    movedY = true;
+  }
+
+  const sampleX = movedX || movedY ? kart.x : tx;
+  const sampleY = movedX || movedY ? kart.y : ty;
+  let { nx, ny } = estimateWallNormal(track, sampleX, sampleY);
+
+  const vx = Math.cos(kart.angle) * kart.speed;
+  const vy = Math.sin(kart.angle) * kart.speed;
+
+  if (nx === 0 && ny === 0) {
+    // No usable gradient — push back along incoming move until free
+    const dist = Math.hypot(dx, dy) || 1;
+    nx = -dx / dist;
+    ny = -dy / dist;
+    for (let s = 0; s < 12; s++) {
+      if (!isWallAt(track, kart.x, kart.y)) break;
+      kart.x += nx * 1.5;
+      kart.y += ny * 1.5;
+    }
+    kart.x += nx * 2;
+    kart.y += ny * 2;
+  } else if (!movedX && !movedY) {
+    // Fully blocked — push out along estimated normal
+    for (let s = 0; s < 8; s++) {
+      if (!isWallAt(track, kart.x, kart.y)) break;
+      kart.x += nx * 1.5;
+      kart.y += ny * 1.5;
+    }
+    kart.x += nx * 2;
+    kart.y += ny * 2;
+  }
+
+  // Cancel into-wall velocity; small outward bounce (keeps tangential slide)
+  // Outward normal: vn < 0 means moving into the wall.
+  const vn = vx * nx + vy * ny;
+  if (vn < 0) {
+    const e = WALL_RESTITUTION;
+    const nvx = vx - (1 + e) * vn * nx;
+    const nvy = vy - (1 + e) * vn * ny;
+    // Arcade: project bounced velocity back onto facing for scalar speed
+    kart.speed = nvx * Math.cos(kart.angle) + nvy * Math.sin(kart.angle);
+  } else if (!movedX && !movedY) {
+    kart.speed *= 0.5;
+  }
+}
+
 export function updateKart(
   kart: Kart,
   track: TrackData,
@@ -153,29 +327,24 @@ export function updateKart(
   if (input.left) kart.angle -= turnRate * steerScale * dt;
   if (input.right) kart.angle += turnRate * steerScale * dt;
 
-  // Integrate position
-  const nx = kart.x + Math.cos(kart.angle) * kart.speed * dt;
-  const ny = kart.y + Math.sin(kart.angle) * kart.speed * dt;
-
-  if (airborne) {
-    // Skip wall collision while hopping — can clear thin wall contact
-    kart.x = nx;
-    kart.y = ny;
-  } else {
-    const nextSurf = sampleSurface(track, nx, ny);
-    if (nextSurf === SURFACE_WALL) {
-      // Soft collision: slide / bounce
-      kart.speed *= -WALL_BOUNCE;
-      // Nudge back slightly
-      kart.x -= Math.cos(kart.angle) * 4;
-      kart.y -= Math.sin(kart.angle) * 4;
-    } else {
-      kart.x = nx;
-      kart.y = ny;
-    }
+  // Integrate position with substepped wall collision (also while airborne)
+  const moveDist = Math.abs(kart.speed) * dt;
+  const steps = Math.min(
+    WALL_MAX_SUBSTEPS,
+    Math.max(1, Math.ceil(moveDist / WALL_SUBSTEP_PX)),
+  );
+  const stepDx = (Math.cos(kart.angle) * kart.speed * dt) / steps;
+  const stepDy = (Math.sin(kart.angle) * kart.speed * dt) / steps;
+  for (let s = 0; s < steps; s++) {
+    resolveWallMove(track, kart, stepDx, stepDy);
   }
 
-  // Hop vertical integration
+  // If already inside a wall (or leftover penetration), push out
+  if (isWallAt(track, kart.x, kart.y)) {
+    depenetrate(track, kart);
+  }
+
+  // Hop vertical integration (visual + air control only; walls still solid)
   if (airborne) {
     kart.hopVz -= HOP_GRAVITY * dt;
     kart.hopZ += kart.hopVz * dt;
