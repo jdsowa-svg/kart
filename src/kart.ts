@@ -69,6 +69,8 @@ const TURN_HOP_STEER = 1.8;
 /** Seconds of elevated turn after hop lands while still steering. */
 const LAND_SLIDE_TIME = 0.35;
 const OFFROAD_MAX = 95;
+/** Turn-rate scale when on grass/off-road (ground) — halves tight off-road steer. */
+const OFFROAD_TURN_MUL = 0.5;
 
 /** Speed above which holding steer alone engages milder auto-drift. */
 export const DRIFT_SPEED = 125;
@@ -323,6 +325,10 @@ export function updateKart(
   // Slightly snappier yaw while powersliding (tight turn / power slide feel)
   if (powerslide && !hopSteerActive) {
     turnRate *= 1.25;
+  }
+  // Soften absurdly tight off-road turn (low OFFROAD_MAX → high speed-curve turn + grip)
+  if (!onRoad && !airborne) {
+    turnRate *= OFFROAD_TURN_MUL;
   }
   const steerScale = Math.min(1, Math.abs(kart.speed) / 25 + 0.15);
   if (input.left) kart.angle -= turnRate * steerScale * dt;
