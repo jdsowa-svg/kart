@@ -1,0 +1,68 @@
+/**
+ * Entry: wire modules, run fixed-timestep game loop.
+ */
+
+import { initInput, getInput } from './input';
+import { createTrack } from './track';
+import { createKart, updateKart, drawKartSprite } from './kart';
+import {
+  VIEW_W,
+  VIEW_H,
+  createMode7Buffers,
+  renderMode7,
+} from './mode7';
+import { drawHud } from './hud';
+
+const canvas = document.getElementById('game') as HTMLCanvasElement;
+const ctx = canvas.getContext('2d', { alpha: false })!;
+ctx.imageSmoothingEnabled = false;
+
+canvas.width = VIEW_W;
+canvas.height = VIEW_H;
+
+initInput();
+
+const track = createTrack();
+const kart = createKart(track);
+const buffers = createMode7Buffers();
+
+let last = performance.now();
+let acc = 0;
+const STEP = 1 / 60;
+let fps = 60;
+let fpsAccum = 0;
+let fpsFrames = 0;
+
+function frame(now: number): void {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  acc += dt;
+
+  fpsAccum += dt;
+  fpsFrames += 1;
+  if (fpsAccum >= 0.5) {
+    fps = fpsFrames / fpsAccum;
+    fpsAccum = 0;
+    fpsFrames = 0;
+  }
+
+  const input = getInput();
+  while (acc >= STEP) {
+    updateKart(kart, track, input, STEP);
+    acc -= STEP;
+  }
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  renderMode7(ctx, track, kart, buffers);
+
+  const steer = (input.left ? -1 : 0) + (input.right ? 1 : 0);
+  drawKartSprite(ctx, VIEW_W, VIEW_H, steer);
+
+  drawHud(ctx, kart, fps);
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
