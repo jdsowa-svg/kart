@@ -194,5 +194,10 @@ export function sampleSurface(track: TrackData, x: number, y: number): number {
 }
 
 export function isOnRoad(surf: number): boolean {
-  return surf === SURFACE_ROAD || surf === SURFACE_FINISH;
+  // Wall curb stripe is visual-only; treat as road so it does not slow you
+  return (
+    surf === SURFACE_ROAD ||
+    surf === SURFACE_FINISH ||
+    surf === SURFACE_WALL
+  );
 }

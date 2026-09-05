@@ -33,7 +33,7 @@ npm run preview   # optional local preview of dist/
 | Toggle scale 1×/2× | `0` (Digit0 / Numpad0) |
 | Restart race    | Esc     |
 
-Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark walls bounce you softly. Hop to clear thin wall contact while airborne (wall collision skipped in air; turn rate slightly reduced).
+Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet). Hop lifts the sprite (turn rate slightly reduced in air).
 
 ## Architecture
 
@@ -55,7 +55,7 @@ For each screen row below the horizon, a perspective depth is derived from the r
 
 - `0` grass (slow)
 - `1` road
-- `2` wall (soft bounce)
+- `2` wall / curb (visual only; not blocking)
 - `3` finish stripe (road + lap trigger)
 
 ## Stack
