@@ -33,13 +33,13 @@ npm run preview   # optional local preview of dist/
 | Toggle scale 1×/2× | `0` (Digit0 / Numpad0) |
 | Restart race    | Esc     |
 
-Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet). Hop lifts the sprite (turn rate slightly reduced in air).
+Drive the oval. Crossing the checkered start/finish line increments the lap counter. Grass slows you down; dark curb stripes are visual only (no wall collision yet). Hop lifts the sprite; hopping while steering (Q/E + left/right) sharpens turn radius / powerslide bite (SMK-style), with a short landing slide window.
 
 ### Auto-drift & mini-turbo
 
 At high speed (above ~`DRIFT_SPEED` ≈ 125 world units/s), holding left/right engages **drift**: movement heading lags behind facing so the kart slides wide through turns (SMK-style plow). The sprite leans harder and shows light dust puffs. HUD shows `DRIFT` while slipping.
 
-Keep the turn held to charge a **mini-turbo**. Release steer (or counter-steer) once charged (`DRIFT READY`) for a short speed burst. Off-road: more slip and a weaker turbo. Hop is independent; hopping while turning adds a bit of extra slip.
+Keep the turn held to charge a **mini-turbo**. Release steer (or counter-steer) once charged (`DRIFT READY`) for a short speed burst. Off-road: more slip and a weaker turbo. Hop+steer engages a sharper yaw and forced drift (even slightly under drift speed), then a brief landing powerslide window while you keep the turn.
 
 ## Architecture
 

@@ -34,6 +34,11 @@ export interface Kart {
   turboTimer: number;
   /** Which way we were drifting when charge built (+1 right / -1 left). */
   driftDir: number;
+  /**
+   * Remaining hop+steer / landing powerslide boost (seconds).
+   * Refreshed while airborne with steer; decays on ground for LAND_SLIDE_TIME.
+   */
+  hopSteerBoost: number;
 }
 
 const MAX_SPEED = 220;
@@ -44,7 +49,12 @@ const FRICTION_OFF = 90;
 const FRICTION_AIR = 20;
 const TURN_BASE = 2.6; // rad/s at low speed
 const TURN_HIGH_FACTOR = 0.35; // turn rate scale at max speed
-const TURN_AIR_FACTOR = 0.7; // reduced turn while airborne
+/** Mild turn reduce while airborne *without* steer (hop+steer uses TURN_HOP_STEER). */
+const TURN_AIR_FACTOR = 0.85;
+/** Sharper yaw while hopping (or landing powerslide) with steer held — SMK hop-turn bite. */
+const TURN_HOP_STEER = 1.8;
+/** Seconds of elevated turn + forced drift after hop lands while still steering. */
+const LAND_SLIDE_TIME = 0.35;
 const OFFROAD_MAX = 95;
 
 /** Speed above which holding steer engages drift slip. */
@@ -57,7 +67,7 @@ const GRIP_DRIFT = 2.2;
 const GRIP_DRIFT_OFF = 1.4;
 /** How quickly `kart.drift` visual factor rises/falls. */
 const DRIFT_BLEND = 6;
-/** Extra slip while hopping and turning. */
+/** Extra slip while hop+steer / landing powerslide boost is active. */
 const HOP_DRIFT_GRIP_MUL = 0.75;
 
 /** Charge units per second while actively drifting. */
@@ -105,6 +115,7 @@ export function createKart(track: TrackData): Kart {
     driftCharge: 0,
     turboTimer: 0,
     driftDir: 0,
+    hopSteerBoost: 0,
   };
 }
 
@@ -124,6 +135,7 @@ export function resetKart(kart: Kart, track: TrackData): void {
   kart.driftCharge = 0;
   kart.turboTimer = 0;
   kart.driftDir = 0;
+  kart.hopSteerBoost = 0;
 }
 
 /** True while the kart is in the air. */
@@ -213,30 +225,47 @@ export function updateKart(
   if (kart.speed > hardMax) kart.speed = hardMax;
   if (kart.speed < -maxSpd * 0.4) kart.speed = -maxSpd * 0.4;
 
-  // Steer: softer at high speed; reduced turn rate in air
+  // Steer input (needed for hop+steer boost before turn rate)
+  const steer =
+    (input.left ? -1 : 0) + (input.right ? 1 : 0);
+
+  // Hop+steer boost: refresh while airborne with steer so landing keeps a window;
+  // on ground, decay while still steering (powerslide bite after touchdown).
+  if (airborne && steer !== 0) {
+    kart.hopSteerBoost = LAND_SLIDE_TIME;
+  } else if (kart.hopSteerBoost > 0) {
+    if (steer === 0) {
+      kart.hopSteerBoost = 0;
+    } else {
+      kart.hopSteerBoost = Math.max(0, kart.hopSteerBoost - dt);
+    }
+  }
+  const hopSteerActive = kart.hopSteerBoost > 0 && steer !== 0;
+
+  // Steer: softer at high speed; hop+steer sharpens yaw (SMK), else mild air reduce
   const speedRatio = Math.min(1, Math.abs(kart.speed) / MAX_SPEED);
   let turnRate =
     TURN_BASE * (1 - speedRatio * (1 - TURN_HIGH_FACTOR));
-  if (airborne) turnRate *= TURN_AIR_FACTOR;
+  if (hopSteerActive) {
+    turnRate *= TURN_HOP_STEER;
+  } else if (airborne) {
+    turnRate *= TURN_AIR_FACTOR;
+  }
   // Need some speed to turn meaningfully (arcade feel)
   const steerScale = Math.min(1, Math.abs(kart.speed) / 25 + 0.15);
-  const steer =
-    (input.left ? -1 : 0) + (input.right ? 1 : 0);
   if (input.left) kart.angle -= turnRate * steerScale * dt;
   if (input.right) kart.angle += turnRate * steerScale * dt;
 
   // --- Drift: grip-based velAngle lag ---
   const absSpeed = Math.abs(kart.speed);
+  // Hop+steer (and landing powerslide) forces drift even a bit under DRIFT_SPEED
   const wantDrift =
-    absSpeed > DRIFT_SPEED && steer !== 0 && !airborne;
-  // Hopping while turning: slightly more slip (optional SMK flavor)
-  const hopSlip =
-    airborne && steer !== 0 && absSpeed > DRIFT_SPEED * 0.7;
+    (absSpeed > DRIFT_SPEED && steer !== 0 && !airborne) || hopSteerActive;
 
   let grip = GRIP_HIGH;
-  if (wantDrift || hopSlip) {
+  if (wantDrift) {
     grip = onRoad ? GRIP_DRIFT : GRIP_DRIFT_OFF;
-    if (hopSlip) grip *= HOP_DRIFT_GRIP_MUL;
+    if (hopSteerActive) grip *= HOP_DRIFT_GRIP_MUL;
   } else if (absSpeed <= DRIFT_SPEED) {
     // Below threshold: snap tightly
     grip = GRIP_HIGH;
@@ -246,7 +275,9 @@ export function updateKart(
   }
 
   // Low speed: force velAngle = angle (no slide when crawling)
-  if (absSpeed < 20) {
+  // Allow hop-forced drift a bit lower so hop+turn still bites
+  const snapSpeed = hopSteerActive ? 12 : 20;
+  if (absSpeed < snapSpeed) {
     kart.velAngle = kart.angle;
   } else {
     const t = 1 - Math.exp(-grip * dt);
@@ -257,11 +288,11 @@ export function updateKart(
   const slip = Math.abs(angleDelta(kart.velAngle, kart.angle));
   const slipNorm = Math.min(1, slip / 0.55);
   const targetDrift =
-    wantDrift || hopSlip ? Math.max(0.35, slipNorm) : slipNorm * 0.5;
+    wantDrift ? Math.max(0.35, slipNorm) : slipNorm * 0.5;
   kart.drift += (targetDrift - kart.drift) * Math.min(1, DRIFT_BLEND * dt);
   if (kart.drift < 0.02 && targetDrift < 0.02) kart.drift = 0;
 
-  // Mini-turbo charge / release
+  // Mini-turbo charge / release (forced hop drift also charges)
   const counter =
     kart.driftDir !== 0 && steer !== 0 && steer !== kart.driftDir;
   if (wantDrift) {
