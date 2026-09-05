@@ -40,9 +40,9 @@ const WALL_BOUNCE = 0.45;
 const OFFROAD_MAX = 95;
 
 /** Initial upward velocity for a hop (world units / s). */
-export const JUMP_VZ = 250;
+export const JUMP_VZ = 342;
 /** Gravity pulling hopZ down (world units / s²). */
-export const HOP_GRAVITY = 1050;
+export const HOP_GRAVITY = 1575;
 /** World units of hopZ → screen pixels of sprite lift. */
 const HOP_PX_PER_UNIT = 0.55;
 
