@@ -16,6 +16,7 @@ import {
 import {
   getActiveTileset,
   sampleTilesetRGB,
+  tilePixelOffset,
   type TrackTileset,
 } from './assets/tileset';
 import { getParallaxLayers, type ParallaxLayers } from './assets/backgrounds';
@@ -29,7 +30,6 @@ const CAM_HEIGHT = 56;
 const CAM_DISTANCE = 56;
 /** Controls how wide the near field is (lower = more FOV stretch). */
 const FOV = 0.92;
-const FOG_START = 0.5;
 
 /** Half-res scale: road buffer is VIEW_W/SCALE × roadH/SCALE. */
 const SCALE = 2;
@@ -46,13 +46,10 @@ const PAL_DARK_R = new Uint8Array([28, 96, 48, 28]);
 const PAL_DARK_G = new Uint8Array([110, 96, 40, 28]);
 const PAL_DARK_B = new Uint8Array([28, 104, 32, 32]);
 
-const OOB_R = 16;
-const OOB_G = 42;
-const OOB_B = 16;
-
-const FOG_R = 95;
-const FOG_G = 165;
-const FOG_B = 220;
+/** Out-of-bounds fill — matches grass tileset when loaded, else procedural grass. */
+let oobR = PAL_R[SURFACE_GRASS]!;
+let oobG = PAL_G[SURFACE_GRASS]!;
+let oobB = PAL_B[SURFACE_GRASS]!;
 
 export interface Mode7Buffers {
   road: ImageData;
@@ -61,26 +58,58 @@ export interface Mode7Buffers {
   skyCanvas: HTMLCanvasElement;
 }
 
+/** Flat sky fill under parallax (no gradient / sun flourish). */
 function buildSkyCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = VIEW_W;
   c.height = HORIZON;
   const sctx = c.getContext('2d', { alpha: false })!;
-  const grad = sctx.createLinearGradient(0, 0, 0, HORIZON);
-  grad.addColorStop(0, '#142848');
-  grad.addColorStop(0.5, '#3a7ab8');
-  grad.addColorStop(1, '#7eb0e0');
-  sctx.fillStyle = grad;
+  sctx.fillStyle = '#3a7ab8';
   sctx.fillRect(0, 0, VIEW_W, HORIZON);
-
-  sctx.fillStyle = 'rgba(255, 236, 170, 0.9)';
-  sctx.beginPath();
-  sctx.arc(VIEW_W * 0.74, HORIZON * 0.38, 16, 0, Math.PI * 2);
-  sctx.fill();
-
-  sctx.fillStyle = 'rgba(255,255,255,0.2)';
-  sctx.fillRect(0, HORIZON - 1, VIEW_W, 1);
   return c;
+}
+
+/**
+ * Set OOB fill from average RGB of grass tile index 0 (or first in surfaces.grass).
+ * Call when tileset becomes active; falls back to procedural grass palette.
+ */
+export function syncOobFromTileset(ts: TrackTileset | null): void {
+  if (!ts) {
+    oobR = PAL_R[SURFACE_GRASS]!;
+    oobG = PAL_G[SURFACE_GRASS]!;
+    oobB = PAL_B[SURFACE_GRASS]!;
+    return;
+  }
+  const grassList =
+    ts.indicesBySurface[SURFACE_GRASS] ??
+    ts.meta.surfaces?.grass ??
+    [0];
+  const tileIndex = grassList[0] ?? 0;
+  const tw = ts.meta.tileWidth;
+  const th = ts.meta.tileHeight;
+  const p = ts.pixels;
+  let sumR = 0;
+  let sumG = 0;
+  let sumB = 0;
+  let n = 0;
+  for (let sy = 0; sy < th; sy++) {
+    for (let sx = 0; sx < tw; sx++) {
+      const off = tilePixelOffset(ts, tileIndex, sx, sy);
+      sumR += p[off]!;
+      sumG += p[off + 1]!;
+      sumB += p[off + 2]!;
+      n += 1;
+    }
+  }
+  if (n === 0) {
+    oobR = PAL_R[SURFACE_GRASS]!;
+    oobG = PAL_G[SURFACE_GRASS]!;
+    oobB = PAL_B[SURFACE_GRASS]!;
+    return;
+  }
+  oobR = (sumR / n) | 0;
+  oobG = (sumG / n) | 0;
+  oobB = (sumB / n) | 0;
 }
 
 export function createMode7Buffers(): Mode7Buffers {
@@ -226,15 +255,6 @@ export function renderMode7(
     const worldDist = (CAM_HEIGHT * FULL_ROAD_H) / (rowFull * 2.2);
     const halfWidth = worldDist * FOV;
 
-    const depthNorm = sy / ROAD_H;
-    const fog =
-      depthNorm < FOG_START
-        ? 0
-        : (depthNorm - FOG_START) / (1 - FOG_START);
-    const fogT = fog * fog;
-    const fogOm = 1 - fogT;
-    const doFog = fogT > 0;
-
     const forwardX = camX + cosA * worldDist;
     const forwardY = camY + sinA * worldDist;
 
@@ -255,9 +275,9 @@ export function renderMode7(
       let b: number;
 
       if (ix < 0 || iy < 0 || ix >= mapSize || iy >= mapSize) {
-        r = OOB_R;
-        g = OOB_G;
-        b = OOB_B;
+        r = oobR;
+        g = oobG;
+        b = oobB;
       } else {
         const surf = surface[(iy << 10) + ix]; // mapSize === 1024
         if (tileset) {
@@ -285,12 +305,6 @@ export function renderMode7(
         }
       }
 
-      if (doFog) {
-        r = (r * fogOm + FOG_R * fogT) | 0;
-        g = (g * fogOm + FOG_G * fogT) | 0;
-        b = (b * fogOm + FOG_B * fogT) | 0;
-      }
-
       out[dest] = r;
       out[dest + 1] = g;
       out[dest + 2] = b;
@@ -302,7 +316,7 @@ export function renderMode7(
     }
   }
 
-  // Sky: parallax strips when loaded, else procedural gradient
+  // Sky: parallax strips when loaded, else flat procedural fill
   if (parallax) {
     drawParallaxSky(ctx, camAngle, parallax, buffers.skyCanvas);
   } else {

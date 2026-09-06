@@ -19,6 +19,7 @@ import {
   createMode7Buffers,
   renderMode7,
   resetMode7Camera,
+  syncOobFromTileset,
 } from './mode7';
 import { drawHud } from './hud';
 import { loadTrackTileset } from './assets/tileset';
@@ -128,6 +129,7 @@ void (async () => {
     loadTrackTileset(),
     loadBackgrounds(),
   ]);
+  syncOobFromTileset(tileset);
   if (tileset) {
     console.info(
       `[assets] track tileset loaded (${tileset.meta.tileCount} tiles, ${tileset.meta.tileWidth}×${tileset.meta.tileHeight})`,
