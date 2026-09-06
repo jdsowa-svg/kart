@@ -46,11 +46,6 @@ const PAL_DARK_R = new Uint8Array([28, 96, 48, 28]);
 const PAL_DARK_G = new Uint8Array([110, 96, 40, 28]);
 const PAL_DARK_B = new Uint8Array([28, 104, 32, 32]);
 
-/** Out-of-bounds fill — matches grass tileset when loaded, else procedural grass. */
-let oobR = PAL_R[SURFACE_GRASS]!;
-let oobG = PAL_G[SURFACE_GRASS]!;
-let oobB = PAL_B[SURFACE_GRASS]!;
-
 export interface Mode7Buffers {
   road: ImageData;
   roadCanvas: HTMLCanvasElement;
@@ -67,49 +62,6 @@ function buildSkyCanvas(): HTMLCanvasElement {
   sctx.fillStyle = '#3a7ab8';
   sctx.fillRect(0, 0, VIEW_W, HORIZON);
   return c;
-}
-
-/**
- * Set OOB fill from average RGB of grass tile index 0 (or first in surfaces.grass).
- * Call when tileset becomes active; falls back to procedural grass palette.
- */
-export function syncOobFromTileset(ts: TrackTileset | null): void {
-  if (!ts) {
-    oobR = PAL_R[SURFACE_GRASS]!;
-    oobG = PAL_G[SURFACE_GRASS]!;
-    oobB = PAL_B[SURFACE_GRASS]!;
-    return;
-  }
-  const grassList =
-    ts.indicesBySurface[SURFACE_GRASS] ??
-    ts.meta.surfaces?.grass ??
-    [0];
-  const tileIndex = grassList[0] ?? 0;
-  const tw = ts.meta.tileWidth;
-  const th = ts.meta.tileHeight;
-  const p = ts.pixels;
-  let sumR = 0;
-  let sumG = 0;
-  let sumB = 0;
-  let n = 0;
-  for (let sy = 0; sy < th; sy++) {
-    for (let sx = 0; sx < tw; sx++) {
-      const off = tilePixelOffset(ts, tileIndex, sx, sy);
-      sumR += p[off]!;
-      sumG += p[off + 1]!;
-      sumB += p[off + 2]!;
-      n += 1;
-    }
-  }
-  if (n === 0) {
-    oobR = PAL_R[SURFACE_GRASS]!;
-    oobG = PAL_G[SURFACE_GRASS]!;
-    oobB = PAL_B[SURFACE_GRASS]!;
-    return;
-  }
-  oobR = (sumR / n) | 0;
-  oobG = (sumG / n) | 0;
-  oobB = (sumB / n) | 0;
 }
 
 export function createMode7Buffers(): Mode7Buffers {
@@ -205,6 +157,59 @@ function drawParallaxSky(
   drawLayer(layers.near, Math.min(layers.near.height, HORIZON));
 }
 
+/** Positive modulo for world-space tile UVs (handles negative coords). */
+function modPos(n: number, m: number): number {
+  return ((n % m) + m) % m;
+}
+
+/**
+ * Infinite grass outside the track map — SMK/F-Zero style tiled OOB.
+ * Samples the grass tileset with world UVs; procedural checker if no tileset.
+ */
+function sampleOobGrass(
+  tileset: TrackTileset | null,
+  wx: number,
+  wy: number,
+): [number, number, number] {
+  const fx = Math.floor(wx);
+  const fy = Math.floor(wy);
+
+  if (tileset) {
+    const tw = tileset.meta.tileWidth;
+    const th = tileset.meta.tileHeight;
+    const grassList =
+      tileset.indicesBySurface[SURFACE_GRASS] ??
+      tileset.meta.surfaces?.grass ??
+      [0];
+    let tileIndex = grassList[0] ?? 0;
+    if (grassList.length > 1) {
+      // Alternate grass variants by world-tile parity (on-map variety feel)
+      const parity = (Math.floor(fx / tw) + Math.floor(fy / th)) & 1;
+      tileIndex = grassList[parity % grassList.length]!;
+    }
+    const tx = modPos(fx, tw);
+    const ty = modPos(fy, th);
+    const off = tilePixelOffset(tileset, tileIndex, tx, ty);
+    const p = tileset.pixels;
+    return [p[off]!, p[off + 1]!, p[off + 2]!];
+  }
+
+  // Procedural grass palette + simple checker (same cadence as on-map grass)
+  const dark = ((fx >> 4) ^ (fy >> 4)) & 1;
+  if (dark) {
+    return [
+      PAL_DARK_R[SURFACE_GRASS]!,
+      PAL_DARK_G[SURFACE_GRASS]!,
+      PAL_DARK_B[SURFACE_GRASS]!,
+    ];
+  }
+  return [
+    PAL_R[SURFACE_GRASS]!,
+    PAL_G[SURFACE_GRASS]!,
+    PAL_B[SURFACE_GRASS]!,
+  ];
+}
+
 /**
  * Render sky + Mode-7 road into the destination canvas context.
  * Camera sits behind the kart looking along path heading while sliding,
@@ -275,9 +280,10 @@ export function renderMode7(
       let b: number;
 
       if (ix < 0 || iy < 0 || ix >= mapSize || iy >= mapSize) {
-        r = oobR;
-        g = oobG;
-        b = oobB;
+        const rgb = sampleOobGrass(tileset, wx, wy);
+        r = rgb[0];
+        g = rgb[1];
+        b = rgb[2];
       } else {
         const surf = surface[(iy << 10) + ix]; // mapSize === 1024
         if (tileset) {
